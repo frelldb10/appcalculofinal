@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cálculo Integral 3D — Cyber Dashboard</title>
+
+  <!-- CSS Personalizado -->
+  <link rel="stylesheet" href="styles.css">
+
+  <!-- Librerías Externas por CDN -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <!-- math.js: interpreta funciones como -x^2+4, 2x+1, exp(-x), log(x), pi, e -->
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.0/lib/browser/math.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+</head>
+<body>
+
+  <!-- Lienzo para el fondo animado (orbe holográfico tenue) -->
+  <canvas id="particles-canvas" aria-hidden="true"></canvas>
+
+  <!-- Encabezado Superior -->
+  <header class="cyber-header">
+    <div class="header-title">
+      <h2> CÁLCULO INTEGRAL EN MOVIMIENTO</h2>
+      <span class="badge warn" id="status-badge">🟡 Iniciando sensor…</span>
+    </div>
+    <div class="header-stats">
+      <span class="stat-item streak" id="streak-lbl">🔥 RACHA: x0</span>
+      <span class="stat-item points" id="points-lbl">🏆 PUNTOS: 0</span>
+    </div>
+  </header>
+
+  <!-- Contenedor Principal (Dashboard) -->
+  <main class="dashboard-grid">
+
+    <!-- PANEL IZQUIERDO: Controles y Cámara -->
+    <section class="sidebar">
+
+      <!-- Card: Modalidad de Uso -->
+      <div class="glass-card">
+        <h3>🕹️ MODALIDAD</h3>
+        <div class="mode-buttons">
+          <button id="btn-mode-explore" class="cyber-btn active" type="button">Exploración</button>
+          <button id="btn-mode-arcade" class="cyber-btn" type="button">Arcade ⚡</button>
+        </div>
+      </div>
+
+      <!-- Card: Aplicación Industrial -->
+      <div class="glass-card">
+        <h3> APLICACIÓN INDUSTRIAL</h3>
+
+        <label for="preset-select">Caso de uso:</label>
+        <select id="preset-select">
+          <option value="custom">🛠️ Personalizado</option>
+          <option value="prod">🏭 Tasa de producción (piezas/hora)</option>
+          <option value="cilindro">🛢️ Tanque cilíndrico</option>
+          <option value="tanque">⚗️ Depósito parabólico</option>
+          <option value="banda">📦 Banda transportadora curva</option>
+        </select>
+        <p class="hint preset-hint" id="preset-hint"></p>
+
+        <label for="input-func">Función f(x):</label>
+        <input type="text" id="input-func" value="x^2" autocomplete="off" spellcheck="false">
+        <p class="hint">Ejemplos: -x^2 + 4 · 2x + 1 · exp(-x) · sin(x) + 2 · sqrt(4 - x)</p>
+
+        <div class="input-group">
+          <div>
+            <label for="input-a">Límite a:</label>
+            <input type="number" id="input-a" value="0" step="0.5">
+          </div>
+          <div>
+            <label for="input-b">Límite b:</label>
+            <input type="number" id="input-b" value="2" step="0.5">
+          </div>
+        </div>
+
+        <label for="manual-gesto">Control manual de respaldo:</label>
+        <select id="manual-gesto">
+          <option value="cam">📷 Usar sensor de cámara</option>
+          <option value="1">☝️ 1 dedo — Área 2D</option>
+          <option value="2">✌️ 2 dedos — Volumen eje X (discos)</option>
+          <option value="3">3️⃣ 3 dedos — Volumen eje Y (capas)</option>
+          <option value="4">4️⃣ 4 dedos — Área superficial 3D</option>
+          <option value="5">🖐️ 5 dedos — Longitud de arco 2D</option>
+          <option value="0">✊ Puño — Limpiar pantalla</option>
+        </select>
+
+        <button id="btn-recalc" class="cyber-btn" type="button">Recalcular</button>
+      </div>
+
+      <!-- Card: Visor de Cámara y Esqueleto -->
+      <div class="glass-card camera-card">
+        <h3>📷 Sensor gestual</h3>
+        <div class="video-container">
+          <video id="webcam-video" autoplay playsinline muted></video>
+          <canvas id="output-canvas"></canvas>
+        </div>
+        <p id="gesture-text" class="gesture-text">Muestra tu mano a la cámara</p>
+        <p class="hint">Mantén el gesto 1 segundo para confirmarlo. Puño cerrado ✊ = limpiar pantalla. Sin actividad por 12 s, la pantalla se limpia sola.</p>
+      </div>
+
+    </section>
+
+    <!-- PANEL DERECHO: Resultados y Gráficas Interactivas -->
+    <section class="main-panel">
+
+      <!-- Card Hero de Resultados -->
+      <div class="glass-card hero-card">
+        <h4 id="mode-title">MODO LIBRE: MUESTRA DE 1 A 5 DEDOS</h4>
+        <div class="progress-bar-container" title="Confirmación del gesto">
+          <div id="progress-bar" class="progress-bar"></div>
+        </div>
+        <h1 id="result-val" aria-live="polite">0.0000 u²</h1>
+        <p id="result-desc">Contexto industrial: selección de parámetros activa.</p>
+      </div>
+
+      <!-- Card de Gráfica 2D / 3D -->
+      <div class="glass-card plot-card">
+        <div id="plot-holder"></div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,348 @@
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+}
+
+body {
+  background-color: #0d0e12;
+  color: #ffffff;
+  overflow-x: hidden;
+  min-height: 100vh;
+}
+
+/* Canvas del fondo animado (orbe holográfico) */
+#particles-canvas {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  z-index: 1;
+  pointer-events: none;
+}
+
+/* Encabezado Superior Neón */
+.cyber-header {
+  position: relative;
+  z-index: 10;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: rgba(22, 24, 31, 0.75);
+  border: 1px solid rgba(0, 173, 181, 0.4);
+  -webkit-backdrop-filter: blur(16px);
+  backdrop-filter: blur(16px);
+  padding: 12px 24px;
+  margin: 15px;
+  border-radius: 12px;
+  box-shadow: 0 0 15px rgba(0, 173, 181, 0.15), inset 0 0 15px rgba(0, 173, 181, 0.05);
+}
+
+.header-title {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+
+.header-title h2 {
+  font-size: 1.25rem;
+  color: #ffffff;
+  letter-spacing: 1px;
+  text-shadow: 0 0 8px rgba(0, 173, 181, 0.6);
+}
+
+/* Badge de estado del sensor */
+.badge {
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+.badge.ok   { color: #00ff88; background: rgba(0, 255, 136, 0.12); box-shadow: 0 0 10px rgba(0, 255, 136, 0.3); }
+.badge.warn { color: #ffb703; background: rgba(255, 183, 3, 0.12);  box-shadow: 0 0 10px rgba(255, 183, 3, 0.3); }
+.badge.off  { color: #ff4757; background: rgba(255, 71, 87, 0.12);  box-shadow: 0 0 10px rgba(255, 71, 87, 0.3); }
+
+.header-stats {
+  display: flex;
+  gap: 20px;
+  font-weight: bold;
+  font-size: 0.95rem;
+}
+
+.stat-item { display: inline-block; }
+.stat-item.streak { color: #ff4757; text-shadow: 0 0 8px rgba(255, 71, 87, 0.5); }
+.stat-item.points { color: #ffb703; text-shadow: 0 0 8px rgba(255, 183, 3, 0.5); }
+
+.stat-item.pop { animation: pop 0.4s ease-out; }
+@keyframes pop {
+  0%   { transform: scale(1); }
+  40%  { transform: scale(1.25); }
+  100% { transform: scale(1); }
+}
+
+/* Grid principal */
+.dashboard-grid {
+  position: relative;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: 340px minmax(0, 1fr);
+  gap: 15px;
+  padding: 0 15px 15px 15px;
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.main-panel,
+.sidebar {
+  min-width: 0; /* evita que Plotly desborde la grilla */
+}
+
+/* Cards Glassmorphism + Glow */
+.glass-card {
+  background: rgba(22, 24, 31, 0.7);
+  border: 1px solid rgba(0, 173, 181, 0.3);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  border-radius: 12px;
+  padding: 16px;
+  margin-bottom: 15px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 10px rgba(0, 173, 181, 0.05);
+  transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.glass-card:hover {
+  border-color: rgba(0, 173, 181, 0.6);
+  box-shadow: 0 0 20px rgba(0, 173, 181, 0.2);
+}
+
+.glass-card h3, .glass-card h4 {
+  color: #00adb5;
+  margin-bottom: 10px;
+  font-size: 0.9rem;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  text-shadow: 0 0 6px rgba(0, 173, 181, 0.4);
+}
+
+/* Inputs y Selects cibernéticos */
+label {
+  display: block;
+  font-size: 0.78rem;
+  color: #a0a5b5;
+  margin-top: 10px;
+  margin-bottom: 4px;
+}
+
+input, select {
+  width: 100%;
+  padding: 9px 12px;
+  background: #111217;
+  border: 1px solid #2e3240;
+  color: #ffffff;
+  border-radius: 8px;
+  outline: none;
+  font-size: 0.88rem;
+  transition: all 0.25s ease-in-out;
+}
+
+input:focus, select:focus {
+  border-color: #00adb5;
+  box-shadow: 0 0 10px rgba(0, 173, 181, 0.4);
+  background: #161822;
+}
+
+option:disabled { color: #555a6b; }
+
+.hint {
+  font-size: 0.72rem;
+  color: #6f7487;
+  margin-top: 5px;
+  line-height: 1.4;
+}
+
+/* Explicación del caso de uso elegido */
+.preset-hint {
+  color: #ffb703;
+  opacity: 0.85;
+}
+
+.input-group {
+  display: flex;
+  gap: 10px;
+}
+
+.input-group > div {
+  flex: 1;
+}
+
+/* Botones Neón */
+.mode-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.mode-buttons .cyber-btn { margin-top: 0; }
+
+.cyber-btn {
+  width: 100%;
+  padding: 11px;
+  margin-top: 14px;
+  background: linear-gradient(135deg, #1f2330 0%, #161822 100%);
+  color: #00adb5;
+  border: 1px solid #00adb5;
+  border-radius: 8px;
+  font-weight: bold;
+  letter-spacing: 0.5px;
+  cursor: pointer;
+  box-shadow: 0 0 10px rgba(0, 173, 181, 0.2);
+  transition: all 0.25s ease;
+}
+
+.cyber-btn:hover {
+  background: #00adb5;
+  color: #0d0e12;
+  box-shadow: 0 0 20px rgba(0, 173, 181, 0.8);
+  transform: translateY(-1px);
+}
+
+.cyber-btn:focus-visible {
+  outline: 2px solid #ffffff;
+  outline-offset: 2px;
+}
+
+.cyber-btn.active {
+  background: #00adb5;
+  color: #121318;
+}
+
+.cyber-btn.active-arcade {
+  background: #ffb703;
+  border-color: #ffb703;
+  color: #121318;
+  box-shadow: 0 0 20px rgba(255, 183, 3, 0.5);
+}
+
+/* Visor de Cámara Neón */
+.camera-card { text-align: center; }
+
+.video-container {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 4 / 3;
+  margin: 0 auto;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 2px solid #00adb5;
+  box-shadow: 0 0 15px rgba(0, 173, 181, 0.3);
+  background: #0d0e12;
+}
+
+#webcam-video {
+  display: none;
+}
+
+#output-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.gesture-text {
+  margin-top: 10px;
+  font-weight: bold;
+  font-size: 0.9rem;
+  color: #ffffff;
+  text-shadow: 0 0 6px rgba(255, 255, 255, 0.4);
+}
+
+/* Hero Card y Barra de Progreso (confirmación de gesto) */
+.progress-bar-container {
+  width: 100%;
+  height: 4px;
+  background: #111217;
+  border-radius: 2px;
+  overflow: hidden;
+  margin: 8px 0 14px 0;
+}
+
+.progress-bar {
+  width: 0%;
+  height: 100%;
+  background: linear-gradient(90deg, #ffb703, #ff0055);
+  box-shadow: 0 0 10px #ffb703;
+  transition: width 0.1s linear;
+}
+
+/* Barra en rojo cuando el puño va a limpiar la pantalla */
+.progress-bar.borrar {
+  background: linear-gradient(90deg, #ff4757, #ff0055);
+  box-shadow: 0 0 10px #ff4757;
+}
+
+#result-val {
+  font-size: 1.75rem;
+  color: #ffffff;
+  margin: 6px 0;
+  text-shadow: 0 0 10px rgba(255, 255, 255, 0.2);
+  overflow-wrap: anywhere;
+}
+
+#result-val.error {
+  color: #ff4757;
+  text-shadow: 0 0 10px rgba(255, 71, 87, 0.4);
+}
+
+#result-desc {
+  font-size: 0.85rem;
+  color: #9094a6;
+  line-height: 1.5;
+}
+
+.plot-card {
+  padding: 10px;
+  /* Más transparente para que el orbe dorado se vea detrás de la gráfica */
+  background: rgba(22, 24, 31, 0.3);
+  -webkit-backdrop-filter: blur(2px);
+  backdrop-filter: blur(2px);
+}
+
+#plot-holder {
+  width: 100%;
+  height: 480px;
+}
+
+/* ==========================================
+   RESPONSIVE
+   ========================================== */
+@media (max-width: 900px) {
+  .dashboard-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .main-panel { order: -1; } /* resultados y gráfica primero */
+  .cyber-header {
+    flex-direction: column;
+    text-align: center;
+  }
+  .header-title { justify-content: center; }
+  #plot-holder { height: 380px; }
+}
+
+@media (max-width: 480px) {
+  .cyber-header { margin: 10px; padding: 10px 14px; }
+  .header-title h2 { font-size: 1rem; }
+  .header-stats { gap: 12px; font-size: 0.85rem; }
+  .dashboard-grid { padding: 0 10px 10px 10px; }
+  #result-val { font-size: 1.3rem; }
+  #plot-holder { height: 320px; }
+}
+
+/* Accesibilidad: menos movimiento si el sistema lo pide */
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}
