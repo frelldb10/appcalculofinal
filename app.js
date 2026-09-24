@@ -53,16 +53,14 @@ class Orbe {
     this.cx = w / 2;
     this.cy = h / 2;
     this.R = Math.min(w, h) * 0.38;
-    this.escala = this.R / 250; // para que marcas y chispas se vean bien en tamaño grande o pequeño
+    this.escala = this.R / 250;
 
-    // Puntos repartidos uniformemente sobre una esfera
     this.puntos = Array.from({ length: nPuntos }, () => {
       const u = Math.random() * 2 - 1;
       const t = Math.random() * Math.PI * 2;
       const s = Math.sqrt(1 - u * u);
       return { x: s * Math.cos(t), y: u, z: s * Math.sin(t), tam: Math.random() * 1.6 + 0.4 };
     });
-    // Anillos parciales que giran en sentidos alternos
     this.anillos = Array.from({ length: 9 }, (_, i) => ({
       radio: 0.7 + i * 0.055 + Math.random() * 0.02,
       inicio: Math.random() * Math.PI * 2,
@@ -75,7 +73,6 @@ class Orbe {
     this.chispas = [];
   }
 
-  // Dibuja el orbe sobre ctx. alpha < 1 lo atenúa (por ejemplo, cuando hay una mano encima).
   dibujar(ctx, t, alpha = 1) {
     const { cx, cy, R } = this;
     const k = Math.max(this.escala, 0.4);
@@ -83,9 +80,8 @@ class Orbe {
 
     ctx.save();
     ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = 'lighter'; // los brillos se suman como luz
+    ctx.globalCompositeOperation = 'lighter';
 
-    // Resplandor central que "respira"
     const pulso = 1 + 0.06 * Math.sin(t * 0.002);
     const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, R * 0.9 * pulso);
     g.addColorStop(0, 'rgba(255, 210, 110, 0.8)');
@@ -96,7 +92,6 @@ class Orbe {
     ctx.arc(cx, cy, R * pulso, 0, Math.PI * 2);
     ctx.fill();
 
-    // Esfera de partículas girando en 3D
     const ay = t * 0.00025, ax = 0.35;
     const cA = Math.cos(ay), sA = Math.sin(ay), cB = Math.cos(ax), sB = Math.sin(ax);
     const rEsfera = R * 0.62;
@@ -105,14 +100,13 @@ class Orbe {
       let z = -p.x * sA + p.z * cA;
       const y = p.y * cB - z * sB;
       z = p.y * sB + z * cB;
-      const prof = (z + 1) / 2; // 0 = atrás, 1 = adelante
+      const prof = (z + 1) / 2;
       ctx.fillStyle = `rgba(255, ${(150 + prof * 80) | 0}, 60, ${0.15 + prof * 0.75})`;
       ctx.beginPath();
       ctx.arc(cx + x * rEsfera, cy + y * rEsfera, p.tam * (0.5 + prof) * Math.max(k, 0.6), 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Anillos giratorios con brillo
     ctx.lineCap = 'round';
     ctx.shadowColor = 'rgba(255, 140, 20, 0.9)';
     ctx.shadowBlur = 10 * k;
@@ -128,7 +122,6 @@ class Orbe {
     ctx.setLineDash([]);
     ctx.shadowBlur = 0;
 
-    // Anillo exterior con marcas (estilo HUD)
     const nTicks = 120, rt = R * 1.22;
     ctx.strokeStyle = 'rgba(255, 170, 60, 0.35)';
     ctx.lineWidth = 1;
@@ -141,7 +134,6 @@ class Orbe {
     }
     ctx.stroke();
 
-    // Chispas que salen de la esfera
     if (animar) {
       if (this.chispas.length < this.chispasMax && Math.random() < 0.4) {
         const ang = Math.random() * Math.PI * 2;
@@ -161,7 +153,6 @@ class Orbe {
       ctx.fillRect(c.x, c.y, 2 * k, 2 * k);
     }
 
-    // Esquinas del marco
     if (this.marco) {
       ctx.strokeStyle = 'rgba(255, 170, 60, 0.3)';
       ctx.lineWidth = 1.5;
@@ -176,7 +167,6 @@ class Orbe {
     }
     ctx.restore();
 
-    // Viñeta oscura en los bordes para que el panel se lea bien
     if (this.vineta) {
       const v = ctx.createRadialGradient(cx, cy, R * 0.8, cx, cy, Math.max(this.w, this.h) * 0.75);
       v.addColorStop(0, 'rgba(13, 14, 18, 0)');
@@ -187,7 +177,7 @@ class Orbe {
   }
 }
 
-// ---------- Orbe de fondo (más tenue para no competir con la gráfica) ----------
+// ---------- Orbe de fondo ----------
 const pCanvas = $('particles-canvas');
 const pCtx = pCanvas.getContext('2d');
 const ALPHA_FONDO = 0.5;
@@ -216,7 +206,7 @@ resizePCanvas();
 requestAnimationFrame(animarFondo);
 
 // ==========================================
-// 2. SINTETIZADOR DE VOZ (SPEECH SYNTHESIS)
+// 2. SINTETIZADOR DE VOZ
 // ==========================================
 function hablar(texto) {
   if (!('speechSynthesis' in window)) return;
@@ -232,9 +222,6 @@ function hablar(texto) {
 // ==========================================
 // 3. MOTOR MATEMÁTICO INTEGRAL
 // ==========================================
-
-// Convierte el texto en una función f(x) usando math.js.
-// Devuelve null si la expresión no se puede interpretar (nunca cambia la función en silencio).
 function compilarFuncion(fStr) {
   if (typeof math === 'undefined') return null;
   try {
@@ -242,24 +229,22 @@ function compilarFuncion(fStr) {
     const f = (x) => {
       try {
         const y = expr.evaluate({ x });
-        return typeof y === 'number' ? y : NaN; // resultados complejos (ej. sqrt(-1)) → NaN
+        return typeof y === 'number' ? y : NaN;
       } catch (e) {
         return NaN;
       }
     };
-    expr.evaluate({ x: 0.5 }); // lanza error si hay variables desconocidas o sintaxis inválida
+    expr.evaluate({ x: 0.5 });
     return f;
   } catch (e) {
     return null;
   }
 }
 
-// Derivada numérica por diferencia central
 function derivada(f, x, h = 1e-5) {
   return (f(x + h) - f(x - h)) / (2 * h);
 }
 
-// Regla de Simpson compuesta (n debe ser par)
 function simpson(g, a, b, n = 200) {
   const h = (b - a) / n;
   let sum = g(a) + g(b);
@@ -268,9 +253,6 @@ function simpson(g, a, b, n = 200) {
   return (h / 3) * sum;
 }
 
-// Cuadratura de Gauss-Legendre compuesta (3 puntos por subintervalo).
-// No evalúa los extremos, así que sirve para integrales impropias
-// como la longitud de arco de sqrt(4 - x) en [0, 4].
 function gaussLegendre(g, a, b, m = 2000) {
   const nodos = [-Math.sqrt(0.6), 0, Math.sqrt(0.6)];
   const pesos = [5 / 9, 8 / 9, 5 / 9];
@@ -283,7 +265,6 @@ function gaussLegendre(g, a, b, m = 2000) {
   return (s * h) / 2;
 }
 
-// Intenta Simpson; si falla en los extremos, usa Gauss-Legendre.
 function integrar(g, a, b) {
   const s = simpson(g, a, b);
   if (Number.isFinite(s)) return { valor: s, impropia: false };
@@ -291,7 +272,6 @@ function integrar(g, a, b) {
   return { valor: gl, impropia: Number.isFinite(gl) };
 }
 
-// n valores equiespaciados de a a b (sin acumular error de punto flotante)
 function linspace(a, b, n) {
   return Array.from({ length: n }, (_, i) => a + (i * (b - a)) / (n - 1));
 }
@@ -314,8 +294,6 @@ const INFO = {
        formula: 'L = ∫[a,b] √(1 + [f′(x)]²) dx', uso: 'Longitud de bandas transportadoras.' }
 };
 
-// Interpretación física de cada caso de uso: solo los gestos que tienen sentido para ese caso.
-// Si se usa otro gesto, el cálculo se hace igual pero con un aviso.
 const CONTEXTOS = {
   prod: {
     nombre: 'Tasa de producción',
@@ -410,8 +388,8 @@ function layout3D(etqY = 'y', etqZ = 'z') {
   };
 }
 
-// Superficie de revolución alrededor del eje X (discos / área superficial)
-function mallaRevolucionX(f, a, b, nS = 40, nR = 40) {
+// Superficie de revolución alrededor del eje X — OPTIMIZADO: 22×22 puntos
+function mallaRevolucionX(f, a, b, nS = 22, nR = 22) {
   const X = [], Y = [], Z = [];
   const thetas = linspace(0, 2 * Math.PI, nR);
   for (const x of linspace(a, b, nS)) {
@@ -423,8 +401,8 @@ function mallaRevolucionX(f, a, b, nS = 40, nR = 40) {
   return { X, Y, Z };
 }
 
-// Superficie de revolución alrededor del eje vertical (capas). La altura va en Z (vertical en Plotly).
-function mallaRevolucionY(f, a, b, nS = 40, nR = 40) {
+// Superficie de revolución alrededor del eje Y — OPTIMIZADO: 22×22 puntos
+function mallaRevolucionY(f, a, b, nS = 22, nR = 22) {
   const X = [], Y = [], Z = [];
   const thetas = linspace(0, 2 * Math.PI, nR);
   for (const x of linspace(a, b, nS)) {
@@ -471,7 +449,7 @@ function renderCalculo(gesto) {
   let res, trazas, layout, nota = '';
 
   switch (gesto) {
-    case 1: { // Área 2D
+    case 1: {
       res = integrar((x) => Math.abs(f(x)), a, b);
       const neta = integrar(f, a, b).valor;
       if (Number.isFinite(neta) && Math.abs(neta - res.valor) > 1e-6) {
@@ -487,13 +465,13 @@ function renderCalculo(gesto) {
       layout = layout2D();
       break;
     }
-    case 2: { // Volumen eje X (discos)
+    case 2: {
       res = integrar((x) => Math.PI * f(x) ** 2, a, b);
       trazas = [superficie(mallaRevolucionX(f, a, b), 'Viridis')];
       layout = layout3D();
       break;
     }
-    case 3: { // Volumen eje Y (capas)
+    case 3: {
       res = integrar((x) => 2 * Math.PI * Math.abs(x) * Math.abs(f(x)), a, b);
       if (a < 0 && b > 0) {
         nota += ' ⚠️ El intervalo cruza x = 0: las capas de ambos lados se superponen. Usa a ≥ 0 para un sólido real.';
@@ -502,13 +480,13 @@ function renderCalculo(gesto) {
       layout = layout3D('y', 'f(x)');
       break;
     }
-    case 4: { // Área superficial
+    case 4: {
       res = integrar((x) => 2 * Math.PI * Math.abs(f(x)) * Math.sqrt(1 + derivada(f, x) ** 2), a, b);
       trazas = [superficie(mallaRevolucionX(f, a, b), 'YlOrRd')];
       layout = layout3D();
       break;
     }
-    case 5: { // Longitud de arco
+    case 5: {
       res = integrar((x) => Math.sqrt(1 + derivada(f, x) ** 2), a, b);
       const xs = linspace(a - 0.5, b + 0.5, 300);
       const xArc = linspace(a, b, 200);
@@ -530,7 +508,6 @@ function renderCalculo(gesto) {
 
   Plotly.react('plot-holder', trazas, layout, PLOT_CONFIG);
 
-  // Interpretación según el caso de uso elegido
   const caso = CONTEXTOS[$('preset-select').value];
   const esp = caso && caso.gestos[gesto];
   let titulo = info.titulo, unidad = info.unidad, voz = info.voz, uso = info.uso, decimales = 4;
@@ -569,12 +546,12 @@ const bancoPreguntas = [
 function actualizarBarra(progreso, borrar = false) {
   const barra = $('progress-bar');
   barra.style.width = `${Math.round(progreso * 100)}%`;
-  barra.classList.toggle('borrar', borrar); // roja cuando el puño va a limpiar
+  barra.classList.toggle('borrar', borrar);
 }
 
 function animarPop(el) {
   el.classList.remove('pop');
-  void el.offsetWidth; // reinicia la animación
+  void el.offsetWidth;
   el.classList.add('pop');
 }
 
@@ -591,10 +568,9 @@ function reiniciarDeteccion() {
   actualizarBarra(0);
 }
 
-// Borra lo proyectado: gráfica y resultado. El orbe de fondo queda a la vista.
 function limpiarProyeccion(motivo) {
   if (typeof Plotly !== 'undefined') Plotly.purge('plot-holder');
-  gestoActual = null;          // así, al volver a mostrar cualquier gesto, se proyecta de nuevo
+  gestoActual = null;
   prevGestoHablado = -1;
   const r = $('result-val');
   r.classList.remove('error');
@@ -616,7 +592,6 @@ function nuevaPreguntaArcade() {
   indicePregunta = idx;
   preguntaActual = bancoPreguntas[idx];
 
-  // Obliga a hacer un gesto nuevo y sostenido: el gesto anterior no cuenta automáticamente
   reiniciarDeteccion();
   bloqueoHasta = performance.now() + 1500;
 
@@ -652,7 +627,7 @@ function verificarRespuestaArcade(gesto) {
 
   actualizarMarcador();
   clearTimeout(timeoutPregunta);
-  timeoutPregunta = setTimeout(nuevaPreguntaArcade, 3000); // solo actúa si sigue en Arcade
+  timeoutPregunta = setTimeout(nuevaPreguntaArcade, 3000);
 }
 
 function pausarArcade() {
@@ -721,7 +696,6 @@ $('btn-recalc').addEventListener('click', () => {
   renderCalculo(man === 'cam' ? (gestoActual || 1) : parseInt(man, 10));
 });
 
-// Enter en los campos = recalcular
 ['input-func', 'input-a', 'input-b'].forEach((id) => {
   $(id).addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && modoActual === 'exploracion') $('btn-recalc').click();
@@ -737,16 +711,14 @@ const PRESETS = {
 
 $('preset-select').addEventListener('change', (e) => {
   const p = PRESETS[e.target.value];
-  if (!p) { actualizarPistaPreset(); return; } // "Personalizado": no cambia la función
+  if (!p) { actualizarPistaPreset(); return; }
   $('input-func').value = p.f;
   $('input-a').value = p.a;
   $('input-b').value = p.b;
   actualizarPistaPreset();
-  // Proyecta directamente el gesto que tiene sentido para ese caso (en Arcade no tapa el reto)
   if (modoActual === 'exploracion') renderCalculo(CONTEXTOS[e.target.value].recomendado);
 });
 
-// Si el usuario edita la función a mano, el caso de uso pasa a "Personalizado"
 ['input-func', 'input-a', 'input-b'].forEach((id) => {
   $(id).addEventListener('input', () => {
     $('preset-select').value = 'custom';
@@ -794,10 +766,9 @@ outCtx.setTransform(dprCam, 0, 0, dprCam, 0, 0);
 
 let camaraLista = false;
 let camaraDisponible = true;
-let manoActual = null;              // puntos de la mano detectada (null = no hay mano)
+let manoActual = null;
 let mensajeCamara = 'Iniciando cámara…';
 
-// Orbe pequeño dentro del visor de la cámara
 const orbeCamara = new Orbe({ marco: true, vineta: false, chispasMax: 25 });
 orbeCamara.redimensionar(CW, CH, 260);
 
@@ -834,8 +805,12 @@ function dibujarEsqueleto(lm) {
   });
 }
 
-// Bucle del visor: orbe de fondo + mano encima (solo la mano, sin video)
+// Bucle del visor — OPTIMIZADO: limitado a 30 fps
+let _ultimoFrameCam = 0;
 function loopCamara(t) {
+  requestAnimationFrame(loopCamara);
+  if (t - _ultimoFrameCam < 33) return; // ~30 fps
+  _ultimoFrameCam = t;
   outCtx.fillStyle = '#121318';
   outCtx.fillRect(0, 0, CW, CH);
   orbeCamara.dibujar(outCtx, reducirMovimiento ? 0 : t, manoActual ? 0.3 : 1);
@@ -848,7 +823,6 @@ function loopCamara(t) {
     outCtx.textAlign = 'center';
     outCtx.fillText(mensajeCamara, CW / 2, CH - 9);
   }
-  requestAnimationFrame(loopCamara);
 }
 requestAnimationFrame(loopCamara);
 
@@ -868,19 +842,15 @@ function calcularModa(arr) {
 
 const distancia = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
 
-// Un dedo está extendido si su punta está más lejos de la muñeca que su articulación media.
-// Así funciona aunque la mano esté inclinada (no depende de que esté vertical).
 function countFingers(lm) {
   let count = 0;
   for (const tip of [8, 12, 16, 20]) {
     if (distancia(lm[tip], lm[0]) > distancia(lm[tip - 2], lm[0])) count++;
   }
-  // Pulgar: su punta se aleja de la base del meñique cuando está abierto
   if (distancia(lm[4], lm[17]) > distancia(lm[3], lm[17])) count++;
   return count;
 }
 
-// Sin mano en cámara: cuenta regresiva y limpieza (Exploración) o pausa (Arcade)
 function revisarInactividad(ahora) {
   const inactivo = ahora - ultimaActividad;
   const restante = Math.max(1, Math.ceil((TIEMPO_INACTIVIDAD - inactivo) / 1000));
@@ -923,14 +893,12 @@ function procesarResultados(results) {
   const esPuno = gesto === 0;
   const texto = $('gesture-text');
 
-  // Confirmación por tiempo: el gesto debe sostenerse TIEMPO_CONFIRMACION ms
   if (gesto !== gestoCandidato) {
     gestoCandidato = gesto;
     inicioCandidato = ahora;
   }
   const progreso = Math.min((ahora - inicioCandidato) / TIEMPO_CONFIRMACION, 1);
 
-  // Puño cerrado ✊
   if (esPuno) {
     if (modoActual === 'arcade') {
       texto.textContent = '✊ En Arcade el puño no borra: muestra de 1 a 5 dedos';
@@ -952,7 +920,6 @@ function procesarResultados(results) {
     return;
   }
 
-  // De 1 a 5 dedos
   actualizarBarra(progreso);
   if (progreso < 1) {
     texto.textContent = `Detectando ${gesto} dedo(s)… mantén la mano`;
@@ -967,7 +934,6 @@ function procesarResultados(results) {
   }
 }
 
-// Si la cámara no está disponible, el proyecto sigue funcionando con el control manual
 function activarRespaldo(textoBadge, mensaje) {
   camaraDisponible = false;
   manoActual = null;
@@ -997,7 +963,7 @@ function iniciarCamara() {
     });
     hands.setOptions({
       maxNumHands: 1,
-      modelComplexity: 1,
+      modelComplexity: 0,
       minDetectionConfidence: 0.7,
       minTrackingConfidence: 0.5
     });
@@ -1013,7 +979,6 @@ function iniciarCamara() {
 
     const camera = new Camera(videoElement, {
       onFrame: async () => {
-        // En control manual no se procesa la cámara (ahorra CPU)
         if ($('manual-gesto').value === 'cam') await hands.send({ image: videoElement });
       },
       width: CW,

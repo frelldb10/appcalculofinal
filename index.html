@@ -8,10 +8,14 @@
   <!-- CSS Personalizado -->
   <link rel="stylesheet" href="styles.css">
 
+  <!-- Preconexión para reducir latencia en CDNs -->
+  <link rel="preconnect" href="https://cdn.plot.ly">
+  <link rel="preconnect" href="https://cdn.jsdelivr.net">
+
   <!-- Librerías Externas por CDN -->
-  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <script src="https://cdn.plot.ly/plotly-basic-2.27.0.min.js"></script>
   <!-- math.js: interpreta funciones como -x^2+4, 2x+1, exp(-x), log(x), pi, e -->
-  <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.0/lib/browser/math.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.0/lib/browser/math.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
   <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
