@@ -90,7 +90,7 @@ body {
   position: relative;
   z-index: 10;
   display: grid;
-  grid-template-columns: 340px minmax(0, 1fr);
+  grid-template-columns: 340px minmax(0, 1fr) 300px;
   gap: 15px;
   padding: 0 15px 15px 15px;
   max-width: 1600px;
@@ -316,6 +316,51 @@ option:disabled { color: #555a6b; }
   width: 100%;
   height: 480px;
 }
+
+/* Análisis numérico */
+.analisis-lateral { min-width: 0; }
+
+.analisis-card h3 { margin-bottom: 6px; }
+
+.analisis-fila {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.analisis-col { min-width: 0; }
+
+.analisis-card .cyber-btn { margin-top: 8px; font-size: 0.8rem; padding: 6px 10px; }
+
+.explicacion {
+  font-size: 0.72rem;
+  line-height: 1.4;
+  color: #9094a6;
+}
+
+.tabla-scroll { overflow-x: auto; }
+
+.tabla-metodos {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.72rem;
+}
+
+.tabla-metodos th,
+.tabla-metodos td {
+  padding: 3px 6px;
+  text-align: right;
+  border-bottom: 1px solid rgba(46, 50, 64, 0.8);
+  white-space: nowrap;
+}
+
+.tabla-metodos th:first-child,
+.tabla-metodos td:first-child { text-align: left; }
+
+.tabla-metodos th { color: #00adb5; font-weight: 600; }
+.tabla-metodos tr.activo td { color: #ffb703; }
+
+#convergencia-holder { width: 100%; height: 170px; }
 
 /* ==========================================
    RESPONSIVE

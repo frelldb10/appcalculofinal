@@ -6,7 +6,7 @@
   <title>Cálculo Integral 3D — Cyber Dashboard</title>
 
   <!-- CSS Personalizado -->
-  <link rel="stylesheet" href="styles.css">
+  <link rel="stylesheet" href="styles.css?v=12">
 
   <!-- Preconexión para reducir latencia en CDNs -->
   <link rel="preconnect" href="https://cdn.plot.ly">
@@ -80,6 +80,15 @@
           </div>
         </div>
 
+        <label for="metodo-select">Método numérico:</label>
+        <select id="metodo-select">
+          <option value="adaptativo">🎯 Simpson adaptativo (recomendado)</option>
+          <option value="simpson">Simpson compuesto</option>
+          <option value="romberg">Romberg (extrapolación)</option>
+          <option value="gauss">Gauss-Legendre</option>
+          <option value="trapecio">Trapecio</option>
+        </select>
+
         <label for="manual-gesto">Control manual de respaldo:</label>
         <select id="manual-gesto">
           <option value="cam">📷 Usar sensor de cámara</option>
@@ -102,7 +111,7 @@
           <canvas id="output-canvas"></canvas>
         </div>
         <p id="gesture-text" class="gesture-text">Muestra tu mano a la cámara</p>
-        <p class="hint">Mantén el gesto 1 segundo para confirmarlo. Puño cerrado ✊ = limpiar pantalla. Sin actividad por 12 s, la pantalla se limpia sola.</p>
+        <p class="hint">🖐️ Mano derecha: muestra de 1 a 5 dedos y mantén 1 segundo para elegir la función. 🤚 Mano izquierda (roja): muévela para girar la gráfica 3D. Puño cerrado ✊ (derecha) = limpiar pantalla. Sin actividad por 12 s, la pantalla se limpia sola.</p>
       </div>
 
     </section>
@@ -127,8 +136,34 @@
 
     </section>
 
+    <!-- COLUMNA DERECHA: cómo se calcula -->
+    <aside class="analisis-lateral">
+      <!-- Card compacta: cómo se calcula (explicación, comparación de métodos y convergencia) -->
+      <div class="glass-card analisis-card" id="analisis-card" hidden>
+        <h3>📐 ¿Cómo se calcula?</h3>
+        <div class="analisis-fila">
+          <div class="analisis-col">
+            <p class="explicacion" id="explicacion-texto"></p>
+          </div>
+          <div class="analisis-col">
+            <div class="tabla-scroll">
+              <table class="tabla-metodos" id="tabla-metodos">
+                <thead>
+                  <tr><th>Método</th><th>Valor</th><th>Error</th></tr>
+                </thead>
+                <tbody></tbody>
+              </table>
+            </div>
+          </div>
+          <div class="analisis-col">
+            <div id="convergencia-holder"></div>
+          </div>
+        </div>
+      </div>
+    </aside>
+
   </main>
 
-  <script src="app.js"></script>
+  <script src="app.js?v=12"></script>
 </body>
 </html>
