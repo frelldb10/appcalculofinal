@@ -363,8 +363,334 @@ option:disabled { color: #555a6b; }
 #convergencia-holder { width: 100%; height: 170px; }
 
 /* ==========================================
+   BOTONES DE GESTO (control sin cámara)
+   ========================================== */
+.etq-seccion {
+  display: block;
+  font-size: 0.78rem;
+  color: #a0a5b5;
+  margin-top: 12px;
+  margin-bottom: 6px;
+}
+
+.gesto-panel {
+  border-radius: 10px;
+  transition: box-shadow 0.3s;
+}
+
+/* Sin cámara: se resaltan los botones para que se note que son el control principal */
+.gesto-panel.destacado {
+  padding: 2px 8px 8px;
+  margin: 0 -8px;
+  box-shadow: inset 0 0 0 1px rgba(255, 183, 3, 0.5), 0 0 14px rgba(255, 183, 3, 0.15);
+}
+.gesto-panel.destacado .etq-seccion { color: #ffb703; }
+
+.gesto-botones {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.gesto-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 7px 4px;
+  background: linear-gradient(135deg, #1f2330 0%, #161822 100%);
+  color: #cfd3e0;
+  border: 1px solid #2e3240;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.gesto-ico { font-size: 1.15rem; line-height: 1; }
+.gesto-nom { font-size: 0.68rem; font-weight: 600; letter-spacing: 0.3px; white-space: nowrap; }
+
+.gesto-btn:hover {
+  border-color: #00adb5;
+  color: #ffffff;
+  box-shadow: 0 0 12px rgba(0, 173, 181, 0.45);
+  transform: translateY(-1px);
+}
+
+.gesto-btn:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
+
+.gesto-btn.active {
+  border-color: #00adb5;
+  background: rgba(0, 173, 181, 0.22);
+  color: #ffffff;
+  box-shadow: 0 0 14px rgba(0, 173, 181, 0.55), inset 0 0 8px rgba(0, 173, 181, 0.3);
+}
+
+.gesto-btn.limpiar:hover { border-color: #ff4757; box-shadow: 0 0 12px rgba(255, 71, 87, 0.45); }
+
+.lab-btn {
+  margin-top: 10px;
+  color: #ffb703;
+  border-color: rgba(255, 183, 3, 0.7);
+  box-shadow: 0 0 10px rgba(255, 183, 3, 0.15);
+}
+.lab-btn:hover { background: #ffb703; color: #0d0e12; box-shadow: 0 0 20px rgba(255, 183, 3, 0.6); }
+
+/* ==========================================
+   DETALLE DEL RESULTADO Y PASO A PASO
+   ========================================== */
+.result-detalle {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  margin-top: 12px;
+}
+.result-detalle:empty { display: none; }
+
+.dato {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  background: rgba(17, 18, 23, 0.75);
+  border: 1px solid #2e3240;
+  border-left: 3px solid #00adb5;
+  border-radius: 8px;
+  min-width: 0;
+}
+.dato-etq { font-size: 0.68rem; color: #8a8fa3; text-transform: uppercase; letter-spacing: 0.4px; }
+.dato-val { font-size: 0.95rem; font-weight: 700; color: #ffffff; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.dato.principal { border-left-color: #ffb703; box-shadow: 0 0 10px rgba(255, 183, 3, 0.12); }
+.dato.principal .dato-val { color: #ffb703; }
+.dato.neg { border-left-color: #ff0055; }
+.dato.neg .dato-val { color: #ff6b8f; }
+.dato.tachado .dato-val { color: #8a8fa3; text-decoration: line-through; }
+
+.pasos-lista {
+  list-style: none;
+  counter-reset: paso;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.pasos-lista li {
+  counter-increment: paso;
+  position: relative;
+  padding: 6px 10px 6px 36px;
+  font-size: 0.8rem;
+  line-height: 1.5;
+  color: #b8bccb;
+  background: rgba(17, 18, 23, 0.55);
+  border: 1px solid rgba(46, 50, 64, 0.8);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
+
+.pasos-lista li::before {
+  content: counter(paso);
+  position: absolute;
+  left: 9px;
+  top: 7px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: #0d0e12;
+  background: #00adb5;
+  box-shadow: 0 0 8px rgba(0, 173, 181, 0.6);
+}
+
+.pasos-lista li strong { color: #ffffff; }
+
+/* ==========================================
+   LABORATORIO MATEMÁTICO INTERACTIVO
+   ========================================== */
+.lab-section {
+  position: relative;
+  z-index: 10;
+  max-width: 1600px;
+  margin: 0 auto;
+  padding: 0 15px 15px 15px;
+  scroll-margin-top: 15px;
+}
+
+.lab-card {
+  border-color: rgba(255, 183, 3, 0.35);
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.5), inset 0 0 14px rgba(255, 183, 3, 0.05);
+}
+.lab-card:hover { border-color: rgba(255, 183, 3, 0.6); box-shadow: 0 0 20px rgba(255, 183, 3, 0.15); }
+
+.lab-encabezado h3 {
+  color: #ffb703;
+  font-size: 1rem;
+  text-shadow: 0 0 8px rgba(255, 183, 3, 0.45);
+  margin-bottom: 2px;
+}
+
+.lab-grid {
+  display: grid;
+  grid-template-columns: 290px minmax(0, 1fr) 300px;
+  gap: 15px;
+  margin-top: 12px;
+}
+
+.lab-controles, .lab-grafica, .lab-lateral { min-width: 0; }
+
+.lab-limite {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 12px;
+}
+.lab-limite label { margin: 0; }
+.lab-limite input[type="number"] { width: 92px; padding: 5px 8px; text-align: right; }
+.lab-limite output {
+  font-weight: 700;
+  color: #ffb703;
+  font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 6px rgba(255, 183, 3, 0.5);
+}
+
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 22px;
+  padding: 0;
+  margin-top: 4px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  accent-color: #00adb5;
+  cursor: pointer;
+}
+input[type="range"]:focus { box-shadow: none; background: transparent; }
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(0, 173, 181, 0.7), rgba(255, 0, 85, 0.7));
+}
+input[type="range"]::-moz-range-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, rgba(0, 173, 181, 0.7), rgba(255, 0, 85, 0.7));
+}
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px;
+  height: 16px;
+  margin-top: -6px;
+  border-radius: 50%;
+  background: #0d0e12;
+  border: 2px solid #00adb5;
+  box-shadow: 0 0 10px rgba(0, 173, 181, 0.8);
+}
+input[type="range"]::-moz-range-thumb {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: #0d0e12;
+  border: 2px solid #00adb5;
+  box-shadow: 0 0 10px rgba(0, 173, 181, 0.8);
+}
+input[type="range"]:focus-visible::-webkit-slider-thumb { border-color: #ffffff; }
+input[type="range"]:focus-visible::-moz-range-thumb { border-color: #ffffff; }
+
+.cyber-btn.mini { margin-top: 8px; padding: 7px 10px; font-size: 0.75rem; }
+
+.lab-tipos {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.lab-tipo {
+  padding: 7px 6px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: #cfd3e0;
+  background: #111217;
+  border: 1px solid #2e3240;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+.lab-tipo:hover { border-color: #ffb703; color: #ffffff; }
+.lab-tipo:focus-visible { outline: 2px solid #ffffff; outline-offset: 2px; }
+.lab-tipo.active {
+  color: #0d0e12;
+  background: #ffb703;
+  border-color: #ffb703;
+  box-shadow: 0 0 12px rgba(255, 183, 3, 0.5);
+}
+
+.lab-acciones { display: flex; gap: 8px; }
+.lab-acciones .cyber-btn { font-size: 0.8rem; padding: 9px 6px; }
+
+#lab-plot { width: 100%; height: 430px; }
+#lab-convergencia { width: 100%; height: 230px; margin-top: 8px; }
+
+.lab-mensaje {
+  margin-top: 8px;
+  padding: 8px 12px;
+  font-size: 0.8rem;
+  color: #ff4757;
+  background: rgba(255, 71, 87, 0.1);
+  border: 1px solid rgba(255, 71, 87, 0.4);
+  border-radius: 8px;
+}
+
+.lab-metricas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.metrica {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 9px 10px;
+  background: rgba(17, 18, 23, 0.75);
+  border: 1px solid #2e3240;
+  border-radius: 8px;
+  min-width: 0;
+}
+.metrica-etq { font-size: 0.66rem; color: #8a8fa3; text-transform: uppercase; letter-spacing: 0.4px; }
+.metrica-val {
+  font-size: 0.92rem;
+  font-weight: 700;
+  color: #ffffff;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.metrica:first-child { border-color: rgba(255, 183, 3, 0.5); }
+.metrica:first-child .metrica-val { color: #ffb703; }
+
+.lab-pasos { margin-top: 14px; }
+.lab-pasos h4 { color: #ffb703; text-shadow: 0 0 6px rgba(255, 183, 3, 0.4); }
+.lab-pasos .pasos-lista li::before { background: #ffb703; box-shadow: 0 0 8px rgba(255, 183, 3, 0.6); }
+
+/* ==========================================
    RESPONSIVE
    ========================================== */
+@media (max-width: 1200px) {
+  .lab-grid { grid-template-columns: 280px minmax(0, 1fr); }
+  .lab-lateral {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 15px;
+    align-items: start;
+  }
+  #lab-convergencia { margin-top: 0; }
+}
+
 @media (max-width: 900px) {
   .dashboard-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -376,6 +702,10 @@ option:disabled { color: #555a6b; }
   }
   .header-title { justify-content: center; }
   #plot-holder { height: 380px; }
+  .lab-grid { grid-template-columns: minmax(0, 1fr); }
+  .lab-grafica { order: -1; } /* la gráfica del laboratorio primero */
+  .lab-lateral { grid-template-columns: minmax(0, 1fr); }
+  #lab-plot { height: 360px; }
 }
 
 @media (max-width: 480px) {
@@ -383,8 +713,10 @@ option:disabled { color: #555a6b; }
   .header-title h2 { font-size: 1rem; }
   .header-stats { gap: 12px; font-size: 0.85rem; }
   .dashboard-grid { padding: 0 10px 10px 10px; }
+  .lab-section { padding: 0 10px 10px 10px; }
   #result-val { font-size: 1.3rem; }
   #plot-holder { height: 320px; }
+  #lab-plot { height: 300px; }
 }
 
 /* Accesibilidad: menos movimiento si el sistema lo pide */

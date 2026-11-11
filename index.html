@@ -4,20 +4,21 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cálculo Integral 3D — Cyber Dashboard</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='82' font-size='90' text-anchor='middle' fill='%2300adb5'%3E%E2%88%AB%3C/text%3E%3C/svg%3E">
 
   <!-- CSS Personalizado -->
-  <link rel="stylesheet" href="styles.css?v=12">
+  <link rel="stylesheet" href="styles.css?v=13">
 
   <!-- Preconexión para reducir latencia en CDNs -->
   <link rel="preconnect" href="https://cdn.plot.ly">
   <link rel="preconnect" href="https://cdn.jsdelivr.net">
 
-  <!-- Librerías Externas por CDN -->
-   <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
+  <!-- Librerías Externas por CDN (versiones fijas) -->
+  <script src="https://cdn.plot.ly/plotly-2.27.0.min.js"></script>
   <!-- math.js: interpreta funciones como -x^2+4, 2x+1, exp(-x), log(x), pi, e -->
   <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.0/lib/browser/math.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+  <!-- MediaPipe Hands (la cámara se abre con getUserMedia desde app.js; ya no se usa camera_utils) -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4.1675469240/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
 
@@ -49,6 +50,7 @@
           <button id="btn-mode-explore" class="cyber-btn active" type="button">Exploración</button>
           <button id="btn-mode-arcade" class="cyber-btn" type="button">Arcade ⚡</button>
         </div>
+        <button id="btn-ir-lab" class="cyber-btn lab-btn" type="button">🧪 Laboratorio matemático</button>
       </div>
 
       <!-- Card: Aplicación Industrial -->
@@ -67,7 +69,7 @@
 
         <label for="input-func">Función f(x):</label>
         <input type="text" id="input-func" value="x^2" autocomplete="off" spellcheck="false">
-        <p class="hint">Ejemplos: -x^2 + 4 · 2x + 1 · exp(-x) · sin(x) + 2 · sqrt(4 - x)</p>
+        <p class="hint">Ejemplos: -x^2 + 4 · 2x + 1 · exp(-x) · sen(x) + 2 · sqrt(4 - x) · ln(x)</p>
 
         <div class="input-group">
           <div>
@@ -100,6 +102,19 @@
           <option value="0">✊ Puño — Limpiar pantalla</option>
         </select>
 
+        <!-- Botones de gesto: funcionan siempre, con o sin cámara -->
+        <div class="gesto-panel" role="group" aria-labelledby="gesto-panel-titulo">
+          <span class="etq-seccion" id="gesto-panel-titulo">Botones de gesto (sin cámara · teclas 1–5 y 0):</span>
+          <div class="gesto-botones">
+            <button type="button" class="gesto-btn" data-gesto="1" title="Área bajo la curva (tecla 1)"><span class="gesto-ico" aria-hidden="true">☝️</span><span class="gesto-nom">1 · Área</span></button>
+            <button type="button" class="gesto-btn" data-gesto="2" title="Volumen alrededor del eje X, discos (tecla 2)"><span class="gesto-ico" aria-hidden="true">✌️</span><span class="gesto-nom">2 · Vol. eje X</span></button>
+            <button type="button" class="gesto-btn" data-gesto="3" title="Volumen alrededor del eje Y, capas (tecla 3)"><span class="gesto-ico" aria-hidden="true">3️⃣</span><span class="gesto-nom">3 · Vol. eje Y</span></button>
+            <button type="button" class="gesto-btn" data-gesto="4" title="Área superficial (tecla 4)"><span class="gesto-ico" aria-hidden="true">4️⃣</span><span class="gesto-nom">4 · Superficie</span></button>
+            <button type="button" class="gesto-btn" data-gesto="5" title="Longitud de arco (tecla 5)"><span class="gesto-ico" aria-hidden="true">🖐️</span><span class="gesto-nom">5 · Arco</span></button>
+            <button type="button" class="gesto-btn limpiar" data-gesto="0" title="Limpiar pantalla (tecla 0)"><span class="gesto-ico" aria-hidden="true">✊</span><span class="gesto-nom">0 · Limpiar</span></button>
+          </div>
+        </div>
+
         <button id="btn-recalc" class="cyber-btn" type="button">Recalcular</button>
       </div>
 
@@ -111,7 +126,7 @@
           <canvas id="output-canvas"></canvas>
         </div>
         <p id="gesture-text" class="gesture-text">Muestra tu mano a la cámara</p>
-        <p class="hint">🖐️ Mano derecha: muestra de 1 a 5 dedos y mantén 1 segundo para elegir la función. 🤚 Mano izquierda (roja): muévela para girar la gráfica 3D. Puño cerrado ✊ (derecha) = limpiar pantalla. Sin actividad por 12 s, la pantalla se limpia sola.</p>
+        <p class="hint">🖐️ Mano derecha: muestra de 1 a 5 dedos y mantén 1 segundo para elegir la función (las puntas doradas son los dedos que cuentan). 🤚 Mano izquierda (roja): muévela para girar la gráfica 3D. Puño cerrado ✊ (derecha) = limpiar pantalla. Sin actividad por 12 s, la pantalla se limpia sola. Sin cámara: botones de gesto o teclas 1–5.</p>
       </div>
 
     </section>
@@ -127,11 +142,18 @@
         </div>
         <h1 id="result-val" aria-live="polite">0.0000 u²</h1>
         <p id="result-desc">Contexto industrial: selección de parámetros activa.</p>
+        <div class="result-detalle" id="result-detalle"></div>
       </div>
 
       <!-- Card de Gráfica 2D / 3D -->
       <div class="glass-card plot-card">
         <div id="plot-holder"></div>
+      </div>
+
+      <!-- Card: paso a paso del cálculo -->
+      <div class="glass-card pasos-card" id="pasos-card" hidden>
+        <h3>📝 Paso a paso del cálculo</h3>
+        <ol class="pasos-lista" id="pasos-lista"></ol>
       </div>
 
     </section>
@@ -164,6 +186,82 @@
 
   </main>
 
-  <script src="app.js?v=12"></script>
+  <!-- LABORATORIO MATEMÁTICO INTERACTIVO -->
+  <section class="lab-section" id="laboratorio" aria-labelledby="lab-titulo">
+    <div class="glass-card lab-card">
+      <div class="lab-encabezado">
+        <h3 id="lab-titulo">🧪 Laboratorio matemático interactivo</h3>
+        <p class="hint">Mueve los límites y el número de subintervalos: la suma de Riemann, la gráfica y la explicación se actualizan al instante.</p>
+      </div>
+
+      <div class="lab-grid">
+        <!-- Controles -->
+        <div class="lab-controles">
+          <label for="lab-func">Función f(x):</label>
+          <input type="text" id="lab-func" value="x^2" autocomplete="off" spellcheck="false">
+          <button id="lab-copiar" class="cyber-btn mini" type="button">⇦ Usar f(x), a y b del panel</button>
+
+          <div class="lab-limite">
+            <label for="lab-a">Límite a</label>
+            <input type="number" id="lab-a-num" value="0" step="0.1" aria-label="Límite a, valor exacto">
+          </div>
+          <input type="range" id="lab-a" min="-10" max="10" step="0.1" value="0">
+
+          <div class="lab-limite">
+            <label for="lab-b">Límite b</label>
+            <input type="number" id="lab-b-num" value="2" step="0.1" aria-label="Límite b, valor exacto">
+          </div>
+          <input type="range" id="lab-b" min="-10" max="10" step="0.1" value="2">
+
+          <div class="lab-limite">
+            <label for="lab-n">Subintervalos n</label>
+            <output id="lab-n-val" for="lab-n">8</output>
+          </div>
+          <input type="range" id="lab-n" min="1" max="200" step="1" value="8">
+
+          <span class="etq-seccion">Tipo de suma:</span>
+          <div class="lab-tipos" role="group" aria-label="Tipo de suma de Riemann">
+            <button type="button" class="lab-tipo active" data-tipo="izquierda" aria-pressed="true">◧ Izquierda</button>
+            <button type="button" class="lab-tipo" data-tipo="medio" aria-pressed="false">◫ Punto medio</button>
+            <button type="button" class="lab-tipo" data-tipo="derecha" aria-pressed="false">◨ Derecha</button>
+            <button type="button" class="lab-tipo" data-tipo="trapecio" aria-pressed="false">⏢ Trapecios</button>
+          </div>
+
+          <div class="lab-acciones">
+            <button id="lab-animar" class="cyber-btn" type="button">▶ Animar n</button>
+            <button id="lab-aplicar" class="cyber-btn" type="button">⇨ Llevar al panel</button>
+          </div>
+          <p class="hint">Prueba: con a &gt; b la integral cambia de signo; si f cruza el eje, los rectángulos de abajo restan.</p>
+        </div>
+
+        <!-- Gráfica -->
+        <div class="lab-grafica">
+          <div id="lab-plot"></div>
+          <p class="lab-mensaje" id="lab-mensaje" role="alert" hidden></p>
+        </div>
+
+        <!-- Métricas y convergencia -->
+        <div class="lab-lateral">
+          <div class="lab-metricas">
+            <div class="metrica"><span class="metrica-etq" id="lab-suma-etq">Suma R₈</span><span class="metrica-val" id="lab-suma">—</span></div>
+            <div class="metrica"><span class="metrica-etq">Integral ∫ₐᵇ f dx</span><span class="metrica-val" id="lab-integral">—</span></div>
+            <div class="metrica"><span class="metrica-etq">Error |Rₙ − ∫|</span><span class="metrica-val" id="lab-error">—</span></div>
+            <div class="metrica"><span class="metrica-etq">Área geométrica</span><span class="metrica-val" id="lab-area">—</span></div>
+          </div>
+          <div id="lab-convergencia"></div>
+        </div>
+      </div>
+
+      <div class="lab-pasos">
+        <h4>📝 Paso a paso</h4>
+        <ol class="pasos-lista" id="lab-pasos-lista"></ol>
+      </div>
+    </div>
+  </section>
+
+  <script src="calculo.js?v=13"></script>
+  <script src="gestos.js?v=13"></script>
+  <script src="app.js?v=13"></script>
+  <script src="laboratorio.js?v=13"></script>
 </body>
 </html>

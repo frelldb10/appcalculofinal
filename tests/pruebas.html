@@ -1,0 +1,130 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Pruebas — Cálculo Integral en Movimiento</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50' y='82' font-size='90' text-anchor='middle' fill='%2300adb5'%3E%E2%88%AB%3C/text%3E%3C/svg%3E">
+  <script src="https://cdn.jsdelivr.net/npm/mathjs@12.4.0/lib/browser/math.min.js"></script>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; }
+    body { background: #0d0e12; color: #ffffff; min-height: 100vh; padding: 16px; }
+    .contenedor { max-width: 1100px; margin: 0 auto; }
+    header {
+      display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px;
+      background: rgba(22, 24, 31, 0.75); border: 1px solid rgba(0, 173, 181, 0.4); border-radius: 12px;
+      padding: 14px 20px; margin-bottom: 16px; box-shadow: 0 0 15px rgba(0, 173, 181, 0.15);
+    }
+    h1 { font-size: 1.15rem; letter-spacing: 1px; text-shadow: 0 0 8px rgba(0, 173, 181, 0.6); }
+    .resumen { display: flex; gap: 10px; flex-wrap: wrap; font-weight: 700; font-size: 0.9rem; }
+    .chip { padding: 4px 12px; border-radius: 20px; border: 1px solid currentColor; }
+    .chip.ok { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+    .chip.mal { color: #ff4757; background: rgba(255, 71, 87, 0.1); }
+    .chip.omit { color: #ffb703; background: rgba(255, 183, 3, 0.1); }
+    section {
+      background: rgba(22, 24, 31, 0.7); border: 1px solid rgba(0, 173, 181, 0.3); border-radius: 12px;
+      padding: 12px 16px; margin-bottom: 12px;
+    }
+    h2 { color: #00adb5; font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.8px; margin-bottom: 8px; }
+    ul { list-style: none; display: flex; flex-direction: column; gap: 4px; }
+    li { font-size: 0.82rem; line-height: 1.45; padding: 4px 8px; border-radius: 6px; background: rgba(17, 18, 23, 0.6); }
+    li .marca { display: inline-block; width: 1.4em; font-weight: 700; }
+    li.ok .marca { color: #00ff88; }
+    li.mal { border: 1px solid rgba(255, 71, 87, 0.5); }
+    li.mal .marca { color: #ff4757; }
+    li.omit .marca { color: #ffb703; }
+    .detalle { display: block; margin: 4px 0 0 1.4em; color: #ff8a95; font-family: Consolas, monospace; font-size: 0.75rem; overflow-wrap: anywhere; }
+    .tiempo { color: #6f7487; font-size: 0.72rem; }
+    p.nota { color: #6f7487; font-size: 0.78rem; margin-top: 8px; }
+    a { color: #00adb5; }
+  </style>
+</head>
+<body>
+  <div class="contenedor">
+    <header>
+      <h1>🧪 PRUEBAS DEL MOTOR MATEMÁTICO Y DE LOS GESTOS</h1>
+      <div class="resumen" id="resumen" aria-live="polite">Ejecutando…</div>
+    </header>
+    <div id="resultados"></div>
+    <p class="nota">Cada prueba compara el resultado de la app con un valor exacto (fórmula cerrada o geometría). Las mismas pruebas corren en Node con <code>npm test</code>. <a href="../index.html">← Volver a la app</a></p>
+  </div>
+
+  <script src="../calculo.js"></script>
+  <script src="../gestos.js"></script>
+  <script src="mano-sintetica.js"></script>
+  <script src="casos.js"></script>
+  <script>
+    'use strict';
+    (function () {
+      const { casos } = window.CasosDePrueba;
+      const mathLib = typeof math !== 'undefined' ? math : null;
+      const grupos = new Map();
+      let ok = 0, mal = 0, omitidas = 0;
+
+      for (const caso of casos) {
+        if (!grupos.has(caso.grupo)) grupos.set(caso.grupo, []);
+        const item = { nombre: caso.nombre, estado: 'ok', detalle: '', ms: 0 };
+        if (caso.requiereMath && !mathLib) {
+          item.estado = 'omit';
+          item.detalle = 'requiere math.js (sin conexión a internet)';
+          omitidas++;
+        } else {
+          const t0 = performance.now();
+          try {
+            caso.fn({ math: mathLib });
+            ok++;
+          } catch (e) {
+            item.estado = 'mal';
+            item.detalle = e.message;
+            mal++;
+          }
+          item.ms = performance.now() - t0;
+        }
+        grupos.get(caso.grupo).push(item);
+      }
+
+      const cont = document.getElementById('resultados');
+      for (const [grupo, items] of grupos) {
+        const sec = document.createElement('section');
+        const h2 = document.createElement('h2');
+        const fallas = items.filter((i) => i.estado === 'mal').length;
+        h2.textContent = `${grupo} — ${items.length - fallas}/${items.length}`;
+        const ul = document.createElement('ul');
+        for (const i of items) {
+          const li = document.createElement('li');
+          li.className = i.estado;
+          const marca = document.createElement('span');
+          marca.className = 'marca';
+          marca.textContent = i.estado === 'ok' ? '✔' : i.estado === 'mal' ? '✖' : '–';
+          const tiempo = document.createElement('span');
+          tiempo.className = 'tiempo';
+          tiempo.textContent = i.estado === 'omit' ? '' : ` (${i.ms.toFixed(1)} ms)`;
+          li.append(marca, i.nombre, tiempo);
+          if (i.detalle) {
+            const d = document.createElement('span');
+            d.className = 'detalle';
+            d.textContent = i.detalle;
+            li.appendChild(d);
+          }
+          ul.appendChild(li);
+        }
+        sec.append(h2, ul);
+        cont.appendChild(sec);
+      }
+
+      const resumen = document.getElementById('resumen');
+      resumen.replaceChildren();
+      const chip = (clase, texto) => {
+        const s = document.createElement('span');
+        s.className = `chip ${clase}`;
+        s.textContent = texto;
+        resumen.appendChild(s);
+      };
+      chip('ok', `✔ ${ok} correctas`);
+      if (mal) chip('mal', `✖ ${mal} fallidas`);
+      if (omitidas) chip('omit', `– ${omitidas} omitidas`);
+      document.title = `${mal ? '✖' : '✔'} ${ok}/${casos.length} — Pruebas`;
+    })();
+  </script>
+</body>
+</html>

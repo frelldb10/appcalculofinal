@@ -1,6 +1,8 @@
 'use strict';
 /* =========================================================
-   CÁLCULO INTEGRAL 3D — CYBER DASHBOARD  (app.js corregido)
+   CÁLCULO INTEGRAL 3D — CYBER DASHBOARD
+   El motor matemático está en calculo.js (window.Calculo) y el conteo de dedos en gestos.js
+   (window.Gestos); así se pueden probar sin navegador (ver tests/).
    ========================================================= */
 
 const $ = (id) => document.getElementById(id);
@@ -29,6 +31,8 @@ let gestoCandidato = null;
 let inicioCandidato = 0;
 let bloqueoHasta = 0;               // en Arcade: ignora gestos justo después de una pregunta
 let ultimaActividad = performance.now();
+let dedosPrevios = null;            // estado de cada dedo en el cuadro anterior (histéresis)
+const memoriaManos = { voto: 0 };   // suaviza la etiqueta derecha/izquierda de MediaPipe
 
 const reducirMovimiento = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -223,219 +227,50 @@ function hablar(texto) {
 }
 
 // ==========================================
-// 3. MOTOR MATEMÁTICO INTEGRAL
+// 3. MOTOR MATEMÁTICO (calculo.js) Y ANÁLISIS NUMÉRICO
 // ==========================================
-function compilarFuncion(fStr) {
-  if (typeof math === 'undefined') return null;
-  try {
-    const expr = math.compile(fStr);
-    const f = (x) => {
-      try {
-        const y = expr.evaluate({ x });
-        return typeof y === 'number' ? y : NaN;
-      } catch (e) {
-        return NaN;
-      }
-    };
-    expr.evaluate({ x: 0.5 });
-    return f;
-  } catch (e) {
-    return null;
-  }
-}
+const METODOS = Calculo.METODOS;
+const linspace = Calculo.linspace;
+const fmt = Calculo.formatear;
+const aNull = (v) => (Number.isFinite(v) ? v : null);   // Plotly deja un hueco donde hay null
 
-function derivada(f, x, h = 1e-5) {
-  return (f(x + h) - f(x - h)) / (2 * h);
-}
-
-function simpson(g, a, b, n = 200) {
-  const h = (b - a) / n;
-  let sum = g(a) + g(b);
-  for (let i = 1; i < n; i += 2) sum += 4 * g(a + i * h);
-  for (let i = 2; i < n; i += 2) sum += 2 * g(a + i * h);
-  return (h / 3) * sum;
-}
-
-function gaussLegendre(g, a, b, m = 2000) {
-  const nodos = [-Math.sqrt(0.6), 0, Math.sqrt(0.6)];
-  const pesos = [5 / 9, 8 / 9, 5 / 9];
-  const h = (b - a) / m;
-  let s = 0;
-  for (let i = 0; i < m; i++) {
-    const c = a + (i + 0.5) * h;
-    for (let k = 0; k < 3; k++) s += pesos[k] * g(c + nodos[k] * h / 2);
-  }
-  return (s * h) / 2;
-}
-
-// Derivada exacta con math.js; si no se puede derivar simbólicamente, diferencias centrales
-function compilarDerivada(fStr, f) {
-  try {
-    const d = math.compile(math.derivative(fStr, 'x').toString());
-    const df = (x) => {
-      try {
-        const y = d.evaluate({ x });
-        return typeof y === 'number' ? y : NaN;
-      } catch (e) {
-        return NaN;
-      }
-    };
-    if (Number.isFinite(df(0.5))) return df;
-  } catch (e) { /* sin derivada simbólica */ }
-  return (x) => derivada(f, x);
-}
-
-function trapecio(g, a, b, n) {
-  const h = (b - a) / n;
-  let s = (g(a) + g(b)) / 2;
-  for (let i = 1; i < n; i++) s += g(a + i * h);
-  return s * h;
-}
-
-// Cada método devuelve { valor, error }; el error se estima comparando n con 2n (Richardson)
-function trapecioConError(g, a, b, n = 400) {
-  const t1 = trapecio(g, a, b, n / 2), t2 = trapecio(g, a, b, n);
-  return { valor: t2, error: Math.abs(t2 - t1) / 3 };
-}
-
-function simpsonConError(g, a, b, n = 400) {
-  const s1 = simpson(g, a, b, n / 2), s2 = simpson(g, a, b, n);
-  return { valor: s2, error: Math.abs(s2 - s1) / 15 };
-}
-
-function gaussConError(g, a, b, m = 200) {
-  const g1 = gaussLegendre(g, a, b, m / 2), g2 = gaussLegendre(g, a, b, m);
-  return { valor: g2, error: Math.abs(g2 - g1) };
-}
-
-function romberg(g, a, b, maxK = 14, tol = 1e-11) {
-  let prev = [(b - a) * (g(a) + g(b)) / 2];
-  let error = Infinity;
-  for (let k = 1; k <= maxK; k++) {
-    const h = (b - a) / 2 ** (k - 1);
-    let s = 0;
-    for (let i = 0; i < 2 ** (k - 1); i++) s += g(a + (i + 0.5) * h);
-    const fila = [prev[0] / 2 + (h * s) / 2];
-    for (let j = 1; j <= k; j++) fila.push(fila[j - 1] + (fila[j - 1] - prev[j - 1]) / (4 ** j - 1));
-    error = Math.abs(fila[k] - prev[k - 1]);
-    prev = fila;
-    if (!Number.isFinite(fila[k])) break;
-    if (k >= 4 && error <= tol * Math.max(1, Math.abs(fila[k]))) break;
-  }
-  return { valor: prev[prev.length - 1], error };
-}
-
-// Simpson adaptativo: subdivide solo donde la función lo necesita. Parte de 8 tramos para no
-// confundir una zona plana con convergencia.
-function simpsonAdaptativo(g, a, b, tol = 1e-9) {
-  let error = 0, evaluaciones = 0;
-  const LIMITE = 200000;
-  const simp = (fa, fm, fb, x0, x1) => ((x1 - x0) / 6) * (fa + 4 * fm + fb);
-
-  function rec(x0, x1, fa, fm, fb, S, t, prof) {
-    const m = (x0 + x1) / 2;
-    const flm = g((x0 + m) / 2), frm = g((m + x1) / 2);
-    evaluaciones += 2;
-    const Si = simp(fa, flm, fm, x0, m), Sd = simp(fm, frm, fb, m, x1);
-    const d = Si + Sd - S;
-    if (!Number.isFinite(d)) return NaN;
-    if (prof <= 0 || evaluaciones > LIMITE || Math.abs(d) <= 15 * t) {
-      error += Math.abs(d) / 15;
-      return Si + Sd + d / 15;
-    }
-    return rec(x0, m, fa, flm, fm, Si, t / 2, prof - 1) + rec(m, x1, fm, frm, fb, Sd, t / 2, prof - 1);
-  }
-
-  const N = 8, h = (b - a) / N;
-  let total = 0;
-  for (let i = 0; i < N; i++) {
-    const x0 = a + i * h, x1 = x0 + h, xm = (x0 + x1) / 2;
-    const fa = g(x0), fm = g(xm), fb = g(x1);
-    total += rec(x0, x1, fa, fm, fb, simp(fa, fm, fb, x0, x1), tol / N, 20);
-  }
-  return { valor: total, error };
-}
-
-const METODOS = {
-  adaptativo: { nombre: 'Simpson adaptativo', corto: 'Adaptativo', fn: simpsonAdaptativo },
-  simpson:    { nombre: 'Simpson compuesto (n=400)', corto: 'Simpson', fn: simpsonConError },
-  romberg:    { nombre: 'Romberg', corto: 'Romberg', fn: romberg },
-  gauss:      { nombre: 'Gauss-Legendre', corto: 'Gauss', fn: gaussConError },
-  trapecio:   { nombre: 'Trapecio (n=400)', corto: 'Trapecio', fn: trapecioConError }
-};
-
-// Puntos donde f cambia de signo (para partir la integral de |f| y evitar picos en los cruces)
-function raicesEn(f, a, b, muestras = 400) {
-  const raices = [];
-  let xPrev = a, yPrev = f(a);
-  for (let i = 1; i <= muestras; i++) {
-    const x = a + ((b - a) * i) / muestras, y = f(x);
-    if (Number.isFinite(yPrev) && Number.isFinite(y) && yPrev * y < 0) {
-      let lo = xPrev, hi = x;
-      for (let k = 0; k < 60; k++) {
-        const mid = (lo + hi) / 2;
-        if (f(lo) * f(mid) <= 0) hi = mid; else lo = mid;
-      }
-      raices.push((lo + hi) / 2);
-    }
-    xPrev = x;
-    yPrev = y;
-  }
-  return raices;
-}
-
-function integrar(g, a, b, metodo = 'adaptativo', cortes = []) {
-  const m = METODOS[metodo] || METODOS.adaptativo;
-  const pts = [a, ...cortes.filter((c) => c > a && c < b), b];
-  let valor = 0, error = 0;
-  for (let i = 0; i < pts.length - 1; i++) {
-    const r = m.fn(g, pts[i], pts[i + 1]);
-    valor += r.valor;
-    error += r.error;
-  }
-  if (Number.isFinite(valor)) return { valor, error, impropia: false, metodo: m.nombre };
-
-  // Integral impropia (la función explota en un extremo): Gauss no evalúa en los bordes
-  const gl = gaussConError(g, a, b, 2000);
-  return { valor: gl.valor, error: gl.error, impropia: Number.isFinite(gl.valor), metodo: 'Gauss-Legendre (impropia)' };
-}
-
-// ---------- Análisis: comparación de métodos y convergencia ----------
 function formatoError(e) {
   if (!Number.isFinite(e)) return '—';
   return e === 0 ? '0' : e.toExponential(1);
 }
 
-function renderAnalisis(g, a, b, cortes, metodoUsado) {
-  const card = $('analisis-card');
-  const ref = integrar(g, a, b, 'romberg', cortes).valor;
-  const refAd = integrar(g, a, b, 'adaptativo', cortes).valor;
-  const referencia = Number.isFinite(refAd) ? refAd : ref;
-  if (!Number.isFinite(referencia) || typeof Plotly === 'undefined') { card.hidden = true; return; }
+function sumaPorTramos(g, a, b, cortes, regla) {
+  const pts = Calculo.puntosTramos(a, b, cortes);
+  let s = 0;
+  for (let i = 0; i < pts.length - 1; i++) s += regla(pts[i], pts[i + 1]);
+  return s;
+}
 
-  const filas = [];
-  for (const [clave, m] of Object.entries(METODOS)) {
-    let evals = 0;
-    const gc = (x) => { evals++; return g(x); };
-    const r = integrar(gc, a, b, clave, cortes);
-    filas.push({ clave, nombre: m.nombre, valor: r.valor, error: r.error, evals });
-  }
+// Tabla comparativa de métodos y gráfica de convergencia. "referencia" es el valor verificado con el
+// método adaptativo (o tanh-sinh si la integral es impropia).
+function renderAnalisis(g, lo, hi, cortes, metodoUsado, referencia) {
+  const card = $('analisis-card');
+  if (!Number.isFinite(referencia) || typeof Plotly === 'undefined') { card.hidden = true; return; }
 
   const tbody = $('tabla-metodos').querySelector('tbody');
   tbody.innerHTML = '';
-  for (const f of filas) {
+  for (const [clave, m] of Object.entries(METODOS)) {
+    // sin respaldo: si un método no puede con la integral (impropia), se ve "—" en vez de copiar otro
+    const r = Calculo.integrar(g, lo, hi, clave, cortes, { respaldo: false });
     const tr = document.createElement('tr');
-    if (f.clave === metodoUsado) tr.className = 'activo';
-    [METODOS[f.clave].corto, Number.isFinite(f.valor) ? f.valor.toFixed(6) : '—', formatoError(f.error)]
+    if (clave === metodoUsado) tr.className = 'activo';
+    [m.corto, Number.isFinite(r.valor) ? r.valor.toFixed(6) : '—', formatoError(r.error)]
       .forEach((txt) => { const td = document.createElement('td'); td.textContent = txt; tr.appendChild(td); });
     tbody.appendChild(tr);
   }
 
-  // Convergencia: error real vs n, en escala log-log
+  // Convergencia: error real vs n, en escala log-log (con el integrando "seguro" para que una
+  // singularidad removible en un extremo, como en la esfera, no deje la gráfica vacía)
+  const gs = Calculo.integrandoSeguro(g, hi - lo).g;
   const ns = [4, 8, 16, 32, 64, 128, 256, 512];
-  const errTrap = ns.map((n) => Math.abs(sumaPorTramos(g, a, b, cortes, (x0, x1) => trapecio(g, x0, x1, n)) - referencia));
-  const errSimp = ns.map((n) => Math.abs(sumaPorTramos(g, a, b, cortes, (x0, x1) => simpson(g, x0, x1, n)) - referencia));
-  const sinCero = (arr) => arr.map((e) => Math.max(e, 1e-16));
+  const errTrap = ns.map((n) => Math.abs(sumaPorTramos(gs, lo, hi, cortes, (x0, x1) => Calculo.trapecio(gs, x0, x1, n)) - referencia));
+  const errSimp = ns.map((n) => Math.abs(sumaPorTramos(gs, lo, hi, cortes, (x0, x1) => Calculo.simpson(gs, x0, x1, n)) - referencia));
+  const sinCero = (arr) => arr.map((e) => (Number.isFinite(e) ? Math.max(e, 1e-16) : null));
   const lay = layout2D();
   lay.showlegend = true;
   lay.legend = { orientation: 'h', y: 1.25, font: { size: 9 } };
@@ -443,23 +278,19 @@ function renderAnalisis(g, a, b, cortes, metodoUsado) {
   lay.font = { ...lay.font, size: 10 };
   lay.margin = { l: 45, r: 10, t: 18, b: 30 };
   lay.xaxis = { ...lay.xaxis, title: { text: 'n' }, type: 'log' };
-  lay.yaxis = { ...lay.yaxis, title: { text: 'error' }, type: 'log' };
+  lay.yaxis = { ...lay.yaxis, title: { text: 'error' }, type: 'log', exponentformat: 'power' };
+  // Si los dos métodos ya son exactos (p. ej. f constante), la gráfica solo mostraría ruido de redondeo
+  const maxErr = Math.max(0, ...[...errTrap, ...errSimp].filter(Number.isFinite));
+  if (maxErr < 1e-12 * Math.max(1, Math.abs(referencia))) {
+    lay.yaxis.range = [-17, -10];
+    lay.annotations = [{ text: 'Error al nivel del redondeo:<br>ambas reglas son exactas aquí', x: 0.5, y: 0.5,
+                         xref: 'paper', yref: 'paper', showarrow: false, font: { color: '#ffb703', size: 10 } }];
+  }
   Plotly.react('convergencia-holder', [
     { x: ns, y: sinCero(errTrap), name: 'Trapecio', mode: 'lines+markers', line: { color: '#ff0055' } },
     { x: ns, y: sinCero(errSimp), name: 'Simpson', mode: 'lines+markers', line: { color: '#00adb5' } }
   ], lay, PLOT_CONFIG);
   card.hidden = false;
-}
-
-function sumaPorTramos(g, a, b, cortes, regla) {
-  const pts = [a, ...cortes.filter((c) => c > a && c < b), b];
-  let s = 0;
-  for (let i = 0; i < pts.length - 1; i++) s += regla(pts[i], pts[i + 1]);
-  return s;
-}
-
-function linspace(a, b, n) {
-  return Array.from({ length: n }, (_, i) => a + (i * (b - a)) / (n - 1));
 }
 
 // ==========================================
@@ -469,20 +300,23 @@ const PLOT_CONFIG = { responsive: true, displaylogo: false };
 
 // Cada gráfica se ajusta sola cuando cambia el tamaño de su contenedor (p. ej. al aparecer la tarjeta)
 if (typeof ResizeObserver !== 'undefined') {
-  const ajustar = (id) => new ResizeObserver(() => {
+  const ajustar = (id) => {
     const el = $(id);
-    if (el && el.data && typeof Plotly !== 'undefined') Plotly.Plots.resize(el);
-  }).observe($(id));
-  ['plot-holder', 'convergencia-holder'].forEach(ajustar);
+    if (!el) return;
+    new ResizeObserver(() => {
+      if (el.data && typeof Plotly !== 'undefined') Plotly.Plots.resize(el);
+    }).observe(el);
+  };
+  ['plot-holder', 'convergencia-holder', 'lab-plot', 'lab-convergencia'].forEach(ajustar);
 }
 
 const INFO = {
   1: { titulo: 'Área Bajo la Curva', unidad: 'u²', voz: 'unidades cuadradas',
-       formula: 'A = ∫[a,b] |f(x)| dx', uso: 'Producción total acumulada en planta.' },
+       formula: '∫[a,b] f(x) dx (con signo) · A = ∫[a,b] |f(x)| dx (área)', uso: 'Producción total acumulada en planta.' },
   2: { titulo: 'Volumen Sólido Eje X (Discos)', unidad: 'u³', voz: 'unidades cúbicas',
        formula: 'V = π ∫[a,b] [f(x)]² dx', uso: 'Capacidad de tanques y depósitos.' },
   3: { titulo: 'Volumen Sólido Eje Y (Capas)', unidad: 'u³', voz: 'unidades cúbicas',
-       formula: 'V = 2π ∫[a,b] |x| · |f(x)| dx', uso: 'Capacidad de silos verticales.' },
+       formula: 'V = 2π ∫ r · h(r) dr  (si a ≥ 0: 2π ∫[a,b] x · |f(x)| dx)', uso: 'Capacidad de silos verticales.' },
   4: { titulo: 'Área Superficial 3D', unidad: 'u²', voz: 'unidades cuadradas',
        formula: 'S = 2π ∫[a,b] |f(x)| √(1 + [f′(x)]²) dx', uso: 'Material de recubrimiento y pintura.' },
   5: { titulo: 'Longitud de Arco', unidad: 'u', voz: 'unidades',
@@ -561,6 +395,25 @@ function layout2D() {
   };
 }
 
+// Rango vertical a partir de los valores dentro de [a, b] (más el 0): una asíntota fuera del intervalo
+// ya no aplasta la gráfica
+function rangoVertical(valores, margen = 0.15) {
+  const finitos = valores.filter(Number.isFinite);
+  if (!finitos.length) return undefined;
+  let lo = Math.min(0, ...finitos), hi = Math.max(0, ...finitos);
+  if (hi - lo < 1e-9) { lo -= 1; hi += 1; }
+  const pad = (hi - lo) * margen;
+  return [lo - pad, hi + pad];
+}
+
+function lineasLimites(a, b) {
+  const linea = (x) => ({ type: 'line', xref: 'x', yref: 'paper', x0: x, x1: x, y0: 0, y1: 1,
+                          line: { color: 'rgba(255, 183, 3, 0.55)', width: 1, dash: 'dot' } });
+  const etiqueta = (x, t) => ({ x, y: 1, xref: 'x', yref: 'paper', text: t, showarrow: false,
+                                font: { color: '#ffb703', size: 13 }, yanchor: 'top', xanchor: 'left', xshift: 4 });
+  return { shapes: [linea(a), linea(b)], annotations: [etiqueta(a, 'a'), etiqueta(b, 'b')] };
+}
+
 // Cámara 3D controlada por la mano de rotación (coordenadas esféricas)
 const RADIO_CAM = Math.hypot(1.6, 1.6, 1.0);
 let camAzimut = Math.atan2(1.6, 1.6);
@@ -585,7 +438,30 @@ function sincronizarCamara(ev) {
   camElevacion = Math.asin(eye.z / r);
 }
 
-function layout3D(etqY = 'y', etqZ = 'z') {
+// Proporciones reales para que los círculos del sólido se vean redondos (con un mínimo, para que un
+// sólido muy largo no quede como una línea)
+function proporciones(trazas) {
+  const rango = { x: [Infinity, -Infinity], y: [Infinity, -Infinity], z: [Infinity, -Infinity] };
+  for (const t of trazas) {
+    for (const eje of ['x', 'y', 'z']) {
+      const datos = (t[eje] || []).flat();
+      for (const v of datos) {
+        if (v === null || !Number.isFinite(v)) continue;
+        if (v < rango[eje][0]) rango[eje][0] = v;
+        if (v > rango[eje][1]) rango[eje][1] = v;
+      }
+    }
+  }
+  const largo = (eje) => Math.max(rango[eje][1] - rango[eje][0], 1e-9);
+  const m = Math.max(largo('x'), largo('y'), largo('z'));
+  const r = (eje) => Math.max(0.45, largo(eje) / m);
+  // Se agranda la caja para que ocupe un volumen parecido al cubo por defecto de Plotly; si no, un
+  // sólido alargado se ve diminuto con la cámara a la misma distancia
+  const k = Math.min(1.6, 1 / Math.cbrt(r('x') * r('y') * r('z')));
+  return { x: k * r('x'), y: k * r('y'), z: k * r('z') };
+}
+
+function layout3D(trazas, etqX = 'x', etqY = 'y', etqZ = 'z') {
   const eje = (t) => ({
     title: { text: t },
     gridcolor: 'rgba(0, 173, 181, 0.2)',
@@ -597,44 +473,229 @@ function layout3D(etqY = 'y', etqZ = 'z') {
     paper_bgcolor: 'rgba(0,0,0,0)',
     font: { color: '#ffffff', family: 'Segoe UI, sans-serif' },
     margin: { l: 0, r: 0, t: 0, b: 0 },
-    showlegend: false,
+    showlegend: true,
+    legend: { orientation: 'h', x: 0, y: 1, font: { size: 11 }, bgcolor: 'rgba(13, 14, 18, 0.5)' },
     scene: {
-      xaxis: eje('x'),
+      xaxis: eje(etqX),
       yaxis: eje(etqY),
       zaxis: eje(etqZ),
+      aspectmode: 'manual',
+      aspectratio: proporciones(trazas),
       camera: { eye: ojoCamara() }
     }
   };
 }
 
-// Superficie de revolución alrededor del eje X — OPTIMIZADO: 22×22 puntos
-function mallaRevolucionX(f, a, b, nS = 22, nR = 22) {
-  const X = [], Y = [], Z = [];
-  const thetas = linspace(0, 2 * Math.PI, nR);
-  for (const x of linspace(a, b, nS)) {
-    const r = f(x);
+const ESCALA_FIJA = (color) => [[0, color], [1, color]];
+
+function superficie(X, Y, Z, opciones = {}) {
+  return {
+    type: 'surface', x: X, y: Y, z: Z, showscale: false, hoverinfo: 'skip',
+    opacity: 0.95, colorscale: 'Viridis', showlegend: false,
+    lighting: { ambient: 0.65, diffuse: 0.7, specular: 0.25, roughness: 0.6 },
+    ...opciones
+  };
+}
+
+// Líneas 3D (varios trazos separados por null en una sola traza: es mucho más liviano)
+function lineas3D(segmentos, nombre, color, ancho = 3, extra = {}) {
+  const x = [], y = [], z = [];
+  for (const seg of segmentos) {
+    for (const [px, py, pz] of seg) { x.push(aNull(px)); y.push(aNull(py)); z.push(aNull(pz)); }
+    x.push(null); y.push(null); z.push(null);
+  }
+  return { type: 'scatter3d', mode: 'lines', x, y, z, name: nombre, hoverinfo: 'skip',
+           line: { color, width: ancho }, showlegend: !!nombre, ...extra };
+}
+
+const N_ANG = 48;      // resolución angular de las superficies de revolución
+const N_LARGO = 60;    // resolución a lo largo del eje
+
+// Sólido al girar la región entre f y el eje X alrededor del eje X: pared curva + tapas planas
+function solidoEjeX(f, a, b, { tapas = true, colorscale = 'Viridis', opacidad = 0.92 } = {}) {
+  const thetas = linspace(0, 2 * Math.PI, N_ANG);
+  const xs = linspace(a, b, N_LARGO);
+  const radios = xs.map((x) => { const y = f(x); return Number.isFinite(y) ? Math.abs(y) : null; });
+  const X = [], Y = [], Z = [], C = [];
+  xs.forEach((x, i) => {
+    const r = radios[i];
     X.push(thetas.map(() => x));
-    Y.push(thetas.map((t) => r * Math.cos(t)));
-    Z.push(thetas.map((t) => r * Math.sin(t)));
+    Y.push(thetas.map((t) => (r === null ? null : r * Math.cos(t))));
+    Z.push(thetas.map((t) => (r === null ? null : r * Math.sin(t))));
+    C.push(thetas.map(() => r));
+  });
+  const rMax = Math.max(1e-9, ...radios.filter((r) => r !== null));
+  const trazas = [superficie(X, Y, Z, { surfacecolor: C, cmin: 0, cmax: rMax, colorscale, opacity: opacidad })];
+
+  if (tapas) {
+    for (const [x, r] of [[a, radios[0]], [b, radios[radios.length - 1]]]) {
+      if (!r) continue;
+      trazas.push(superficie(
+        [thetas.map(() => x), thetas.map(() => x)],
+        [thetas.map(() => 0), thetas.map((t) => r * Math.cos(t))],
+        [thetas.map(() => 0), thetas.map((t) => r * Math.sin(t))],
+        { colorscale: ESCALA_FIJA('rgba(0, 173, 181, 0.9)'), opacity: 0.55 }
+      ));
+    }
   }
-  return { X, Y, Z };
+  return { trazas, radios, xs, rMax };
 }
 
-// Superficie de revolución alrededor del eje Y — OPTIMIZADO: 22×22 puntos
-function mallaRevolucionY(f, a, b, nS = 22, nR = 22) {
-  const X = [], Y = [], Z = [];
-  const thetas = linspace(0, 2 * Math.PI, nR);
-  for (const x of linspace(a, b, nS)) {
-    const h = f(x);
-    X.push(thetas.map((t) => x * Math.cos(t)));
-    Y.push(thetas.map((t) => x * Math.sin(t)));
-    Z.push(thetas.map(() => h));
-  }
-  return { X, Y, Z };
+// Curva generatriz y eje de giro (ayudan a entender qué se está girando)
+function curvaGeneratriz3D(f, a, b, plano) {
+  const xs = linspace(a, b, 200);
+  const pts = xs.map((x) => (plano === 'xz' ? [x, 0, f(x)] : [x, f(x), 0]));
+  return lineas3D([pts], 'Curva y = f(x)', '#ff0055', 6);
 }
 
-function superficie(m, colorscale) {
-  return { type: 'surface', x: m.X, y: m.Y, z: m.Z, colorscale, showscale: false, opacity: 0.95 };
+function graficaArea(f, a, b, res) {
+  const pad = 0.12 * (b - a);
+  const xs = linspace(a - pad, b + pad, 400);
+  // malla del relleno con las raíces incluidas, para que el sombreado cambie de color justo en el cruce
+  const xf = [...linspace(a, b, 300), ...res.raices].sort((p, q) => p - q);
+  const yf = xf.map((x) => aNull(f(x)));
+  const hayNegativa = res.negativa < 0;
+  const hayPositiva = res.positiva > 0;
+
+  const trazas = [
+    { x: xf, y: yf.map((y) => (y === null ? null : Math.max(y, 0))), type: 'scatter', mode: 'lines',
+      fill: 'tozeroy', fillcolor: 'rgba(0, 173, 181, 0.38)', line: { color: 'rgba(0,0,0,0)' },
+      name: 'f > 0: suma', hoverinfo: 'skip', showlegend: hayPositiva },
+    { x: xf, y: yf.map((y) => (y === null ? null : Math.min(y, 0))), type: 'scatter', mode: 'lines',
+      fill: 'tozeroy', fillcolor: 'rgba(255, 0, 85, 0.38)', line: { color: 'rgba(0,0,0,0)' },
+      name: 'f < 0: resta en ∫, suma en el área', hoverinfo: 'skip', showlegend: hayNegativa },
+    { x: xs, y: xs.map((x) => aNull(f(x))), type: 'scatter', mode: 'lines', name: 'f(x)',
+      line: { color: '#00adb5', width: 3 }, showlegend: false }
+  ];
+  if (res.raices.length) {
+    trazas.push({ x: res.raices, y: res.raices.map(() => 0), type: 'scatter', mode: 'markers', name: 'Raíces',
+                  marker: { color: '#ffb703', size: 9, symbol: 'x' } });
+  }
+  const layout = layout2D();
+  const lim = lineasLimites(a, b);
+  Object.assign(layout, lim, { showlegend: true, legend: { orientation: 'h', y: 1.1, font: { size: 11 } } });
+  layout.margin = { ...layout.margin, t: 40 };
+  layout.yaxis.range = rangoVertical(yf);
+  return { trazas, layout };
+}
+
+function graficaArco(f, a, b, res) {
+  const pad = 0.12 * (b - a);
+  const xs = linspace(a - pad, b + pad, 400);
+  const xArc = linspace(a, b, 300);
+  const yArc = xArc.map((x) => aNull(f(x)));
+  const fa = f(a), fb = f(b);
+  const trazas = [
+    { x: xs, y: xs.map((x) => aNull(f(x))), type: 'scatter', mode: 'lines', name: 'f(x)',
+      line: { color: 'rgba(0, 173, 181, 0.6)', width: 2 }, showlegend: false },
+    { x: xArc, y: yArc, type: 'scatter', mode: 'lines', hoverinfo: 'skip', showlegend: false,
+      line: { color: 'rgba(255, 0, 85, 0.25)', width: 12 } },
+    { x: xArc, y: yArc, type: 'scatter', mode: 'lines', name: `Arco medido: L = ${fmt(res.valor)}`,
+      line: { color: '#ff0055', width: 4 } }
+  ];
+  if (Number.isFinite(fa) && Number.isFinite(fb)) {
+    trazas.push(
+      { x: [a, b], y: [fa, fb], type: 'scatter', mode: 'lines', name: `Cuerda (recta): ${fmt(res.cuerda)}`,
+        line: { color: 'rgba(255, 255, 255, 0.55)', width: 2, dash: 'dash' } },
+      { x: [a, b], y: [fa, fb], type: 'scatter', mode: 'markers+text', text: ['A', 'B'],
+        textposition: 'top center', textfont: { color: '#ffb703', size: 14 }, showlegend: false,
+        marker: { color: '#ffb703', size: 10 }, hoverinfo: 'x+y' }
+    );
+  }
+  const layout = layout2D();
+  Object.assign(layout, { showlegend: true, legend: { orientation: 'h', y: 1.1, font: { size: 11 } } });
+  layout.margin = { ...layout.margin, t: 40 };
+  layout.yaxis.range = rangoVertical(yArc);
+  return { trazas, layout };
+}
+
+// Discos (eje X): el sólido con tapas y algunos discos de muestra, que son la idea del método
+function graficaVolumenX(f, a, b) {
+  const s = solidoEjeX(f, a, b, { tapas: true, colorscale: 'Viridis', opacidad: 0.85 });
+  const thetas = linspace(0, 2 * Math.PI, N_ANG);
+  const discos = linspace(a, b, 9).slice(1, -1).map((x) => {
+    const r = Math.abs(f(x));
+    return Number.isFinite(r) ? thetas.map((t) => [x, r * Math.cos(t), r * Math.sin(t)]) : [];
+  });
+  const pad = 0.08 * (b - a);
+  const trazas = [
+    ...s.trazas,
+    lineas3D(discos, 'Discos de radio |f(x)|', '#ffb703', 4),
+    curvaGeneratriz3D(f, a, b, 'xy'),
+    lineas3D([[[a - pad, 0, 0], [b + pad, 0, 0]]], 'Eje de giro (eje X)', 'rgba(255,255,255,0.8)', 3, { line: { color: 'rgba(255,255,255,0.8)', width: 3, dash: 'dash' } })
+  ];
+  return { trazas, layout: layout3D(trazas, 'x', 'y', 'z') };
+}
+
+// Capas (eje Y). En Plotly el eje vertical es z, así que el eje de giro (el eje Y del plano) se dibuja
+// vertical: (x, y del plano) → (x, z, y). El sólido se arma con el perfil h(r) de calculo.js, que ya
+// resuelve la superposición cuando el intervalo cruza x = 0.
+function graficaVolumenY(f, a, b, res) {
+  const { rMin, rMax, alturas } = res.perfil;
+  const thetas = linspace(0, 2 * Math.PI, N_ANG);
+  const rs = linspace(rMin, rMax, N_LARGO);
+  const hs = rs.map(alturas);
+  const anillo = (r, z) => thetas.map((t) => [r * Math.cos(t), r * Math.sin(t), z]);
+  const malla = (zDe) => ({
+    X: rs.map((r) => thetas.map((t) => r * Math.cos(t))),
+    Y: rs.map((r) => thetas.map((t) => r * Math.sin(t))),
+    Z: rs.map((r, i) => thetas.map(() => aNull(zDe(hs[i]))))
+  });
+  const arriba = malla((h) => h.arriba), abajo = malla((h) => h.abajo);
+  const zMax = Math.max(1e-9, ...hs.map((h) => Math.abs(h.arriba)).filter(Number.isFinite),
+                        ...hs.map((h) => Math.abs(h.abajo)).filter(Number.isFinite));
+  const escala = 'YlOrRd';
+  const trazas = [
+    superficie(arriba.X, arriba.Y, arriba.Z, { colorscale: escala, surfacecolor: arriba.Z, cmin: -zMax, cmax: zMax, opacity: 0.9 }),
+    superficie(abajo.X, abajo.Y, abajo.Z, { colorscale: escala, surfacecolor: abajo.Z, cmin: -zMax, cmax: zMax, opacity: 0.9 })
+  ];
+  // Paredes cilíndricas exterior (r = rMax) e interior (r = rMin, si el sólido tiene hueco)
+  const pared = (r, h) => superficie(
+    [thetas.map((t) => r * Math.cos(t)), thetas.map((t) => r * Math.cos(t))],
+    [thetas.map((t) => r * Math.sin(t)), thetas.map((t) => r * Math.sin(t))],
+    [thetas.map(() => h.abajo), thetas.map(() => h.arriba)],
+    { colorscale: ESCALA_FIJA('rgba(255, 140, 20, 0.9)'), opacity: 0.6 }
+  );
+  const hExt = hs[hs.length - 1], hInt = hs[0];
+  if (Number.isFinite(hExt.arriba) && hExt.arriba - hExt.abajo > 1e-12) trazas.push(pared(rMax, hExt));
+  if (rMin > 0 && Number.isFinite(hInt.arriba) && hInt.arriba - hInt.abajo > 1e-12) trazas.push(pared(rMin, hInt));
+
+  // Una capa típica resaltada: radio r, altura h(r)
+  const rCapa = rMin + 0.62 * (rMax - rMin);
+  const hCapa = alturas(rCapa);
+  if (Number.isFinite(hCapa.arriba) && hCapa.arriba - hCapa.abajo > 1e-12) {
+    trazas.push(lineas3D([anillo(rCapa, hCapa.abajo), anillo(rCapa, hCapa.arriba),
+      ...[0, 0.25, 0.5, 0.75].map((k) => {
+        const t = k * 2 * Math.PI;
+        return [[rCapa * Math.cos(t), rCapa * Math.sin(t), hCapa.abajo], [rCapa * Math.cos(t), rCapa * Math.sin(t), hCapa.arriba]];
+      })], `Capa típica: 2π·r·h(r)·dr (r = ${fmt(rCapa, 2)})`, '#00ffcc', 5));
+  }
+  const zs = hs.flatMap((h) => [h.arriba, h.abajo]).filter(Number.isFinite);
+  const zLo = Math.min(0, ...zs), zHi = Math.max(0, ...zs), pad = 0.12 * (zHi - zLo || 1);
+  trazas.push(
+    curvaGeneratriz3D(f, a, b, 'xz'),
+    lineas3D([[[0, 0, zLo - pad], [0, 0, zHi + pad]]], 'Eje de giro (eje Y)', 'rgba(255,255,255,0.8)', 3,
+             { line: { color: 'rgba(255,255,255,0.8)', width: 3, dash: 'dash' } })
+  );
+  return { trazas, layout: layout3D(trazas, 'x', 'z', 'y = f(x)') };
+}
+
+// Superficie (eje X): solo la pared curva (sin tapas) con una malla de anillos y generatrices
+function graficaSuperficie(f, a, b) {
+  const s = solidoEjeX(f, a, b, { tapas: false, colorscale: 'YlOrRd', opacidad: 0.8 });
+  const thetas = linspace(0, 2 * Math.PI, N_ANG);
+  const anillos = linspace(a, b, 13).map((x) => {
+    const r = Math.abs(f(x));
+    return Number.isFinite(r) ? thetas.map((t) => [x, r * Math.cos(t), r * Math.sin(t)]) : [];
+  });
+  const meridianos = linspace(0, 2 * Math.PI, 13).slice(0, -1).map((t) =>
+    s.xs.map((x, i) => (s.radios[i] === null ? [null, null, null] : [x, s.radios[i] * Math.cos(t), s.radios[i] * Math.sin(t)])));
+  const trazas = [
+    ...s.trazas,
+    lineas3D([...anillos, ...meridianos], 'Malla de la superficie lateral', 'rgba(255, 255, 255, 0.45)', 2),
+    curvaGeneratriz3D(f, a, b, 'xy')
+  ];
+  return { trazas, layout: layout3D(trazas, 'x', 'y', 'z') };
 }
 
 function mostrarError(msg) {
@@ -642,8 +703,116 @@ function mostrarError(msg) {
   r.classList.add('error');
   r.textContent = '⚠️ Revisa los datos';
   $('result-desc').textContent = msg;
+  $('result-detalle').replaceChildren();
   $('analisis-card').hidden = true;
+  $('pasos-card').hidden = true;
   return false;
+}
+
+// Chips con los valores clave del resultado
+function mostrarDetalle(datos) {
+  const cont = $('result-detalle');
+  cont.replaceChildren();
+  for (const [etiqueta, valor, clase] of datos) {
+    const div = document.createElement('div');
+    div.className = `dato${clase ? ' ' + clase : ''}`;
+    const e = document.createElement('span');
+    e.className = 'dato-etq';
+    e.textContent = etiqueta;
+    const v = document.createElement('span');
+    v.className = 'dato-val';
+    v.textContent = valor;
+    div.append(e, v);
+    cont.appendChild(div);
+  }
+}
+
+// Lista de pasos: cada paso es [título, texto]
+function mostrarPasos(pasos) {
+  const ol = $('pasos-lista');
+  ol.replaceChildren();
+  for (const [titulo, texto] of pasos) {
+    const li = document.createElement('li');
+    const s = document.createElement('strong');
+    s.textContent = titulo;
+    li.append(s, ' ', texto);
+    ol.appendChild(li);
+  }
+  $('pasos-card').hidden = false;
+}
+
+function marcarBotonGesto(g) {
+  document.querySelectorAll('.gesto-btn').forEach((btn) => {
+    btn.classList.toggle('active', Number(btn.dataset.gesto) === g);
+  });
+}
+
+function listaNumeros(xs, dec = 3) {
+  if (!xs.length) return 'ninguna';
+  const txt = xs.slice(0, 6).map((x) => fmt(x, dec)).join(', ');
+  return xs.length > 6 ? `${txt}, …` : txt;
+}
+
+// Pasos del cálculo, explicados para la clase (el texto de la voz se arma aparte)
+function construirPasos(gesto, { fStr, a, b, res, der, unidad, decimales }) {
+  const u = unidad;
+  const v = (x) => fmt(x, decimales);
+  const pasos = [['Datos:', `f(x) = ${fStr}, intervalo [a, b] = [${fmt(a, 3)}, ${fmt(b, 3)}].`]];
+
+  switch (gesto) {
+    case 1: {
+      pasos.push(['Raíces en [a, b]:', `${listaNumeros(res.raices)}. Dividen el intervalo en ${res.tramos.length} tramo(s) donde f no cambia de signo.`]);
+      const muestra = res.tramos.slice(0, 4).map((t) => `∫[${fmt(t.desde, 2)}, ${fmt(t.hasta, 2)}] f dx = ${v(t.valor)}`).join(' · ');
+      pasos.push(['Integral de cada tramo:', muestra + (res.tramos.length > 4 ? ' · …' : '')]);
+      pasos.push(['Integral definida (con signo):', `∫[a,b] f(x) dx = Σ Iₖ = ${v(res.integral)} ${u}. Las partes bajo el eje restan.`]);
+      pasos.push(['Área geométrica:', `A = ∫[a,b] |f(x)| dx = Σ |Iₖ| = ${v(res.area)} ${u}. Todas las partes suman.`]);
+      if (res.negativa === 0) pasos.push(['Conclusión:', 'f ≥ 0 en todo [a, b], así que la integral y el área coinciden.']);
+      else if (res.positiva === 0) pasos.push(['Conclusión:', 'f ≤ 0 en todo [a, b]: la integral es negativa y el área es su valor absoluto.']);
+      else pasos.push(['Conclusión:', `La parte bajo el eje vale ${v(res.negativa)}: la integral la resta y el área la suma, por eso difieren en 2·${v(Math.abs(res.negativa))} = ${v(2 * Math.abs(res.negativa))}.`]);
+      break;
+    }
+    case 2:
+      pasos.push(['Corte transversal:', 'cada corte perpendicular al eje X es un disco de radio R(x) = |f(x)|.']);
+      pasos.push(['Elemento de volumen:', 'A(x) = π·[f(x)]², así que un disco delgado mide dV = π·[f(x)]²·dx.']);
+      pasos.push(['Suma de discos:', `V = π ∫[a,b] [f(x)]² dx = ${v(res.valor)} ${u}.`]);
+      pasos.push(['Observación:', 'el signo de f no importa: al elevar al cuadrado el radio siempre es positivo.']);
+      break;
+    case 3: {
+      pasos.push(['Capa cilíndrica:', 'una franja vertical a distancia r del eje Y forma, al girar, un tubo de radio r, altura h(r) y grosor dr.']);
+      pasos.push(['Elemento de volumen:', 'dV = (circunferencia)·(altura)·(grosor) = 2π·r·h(r)·dr.']);
+      if (res.cruzaEje) {
+        pasos.push(['¡Cuidado, superposición!', `el intervalo cruza el eje de giro (x = 0). Las capas de x < 0 y x > 0 con el mismo radio ocupan el mismo espacio; sumarlas contaría ese volumen dos veces (${v(res.sinCorregir)} ${u}).`]);
+        pasos.push(['Corrección:', `se toma la unión de ambos lados: h(r) es la altura combinada de x = r y x = −r, con r de 0 a max(|a|, |b|) = ${fmt(res.perfil.rMax, 3)}.`]);
+        pasos.push(['Resultado:', `V = 2π ∫[0, ${fmt(res.perfil.rMax, 3)}] r·h(r) dr = ${v(res.valor)} ${u}.`]);
+      } else if (b <= 0) {
+        pasos.push(['Resultado:', `el intervalo está a la izquierda del eje, así que r = |x| y h = |f(x)|: V = 2π ∫[a,b] |x|·|f(x)| dx = ${v(res.valor)} ${u}.`]);
+      } else {
+        pasos.push(['Resultado:', `aquí r = x y h(r) = |f(x)|: V = 2π ∫[a,b] x·|f(x)| dx = ${v(res.valor)} ${u}.`]);
+      }
+      break;
+    }
+    case 4:
+      pasos.push(['Derivada:', `f′(x) = ${der.texto}${der.simbolica ? ' (exacta, con math.js)' : ''}.`]);
+      pasos.push(['Elemento de arco:', 'ds = √(1 + [f′(x)]²) dx.']);
+      pasos.push(['Elemento de superficie:', 'cada anillo tiene circunferencia 2π·|f(x)|, así que dS = 2π·|f(x)|·ds.']);
+      pasos.push(['Superficie lateral:', `S = 2π ∫[a,b] |f(x)| √(1 + [f′(x)]²) dx = ${v(res.valor)} ${u}.`]);
+      pasos.push(['Con tapas:', `si se agregan los discos de los extremos, π·f(a)² + π·f(b)² = ${v(res.tapas)} ${u}; total ${v(res.valor + res.tapas)} ${u}.`]);
+      break;
+    case 5:
+      pasos.push(['Derivada:', `f′(x) = ${der.texto}${der.simbolica ? ' (exacta, con math.js)' : ''}.`]);
+      pasos.push(['Elemento de arco:', 'por Pitágoras, un tramo pequeño de la curva mide ds = √(dx² + dy²) = √(1 + [f′(x)]²) dx.']);
+      pasos.push(['Longitud:', `L = ∫[a,b] √(1 + [f′(x)]²) dx = ${v(res.valor)} ${u}.`]);
+      if (Number.isFinite(res.cuerda)) {
+        pasos.push(['Comprobación:', `la cuerda AB mide √((b − a)² + (f(b) − f(a))²) = ${v(res.cuerda)} ${u}. Una curva nunca es más corta que la recta entre sus extremos: L − cuerda = ${v(res.valor - res.cuerda)} ${u} ≥ 0 ✔.`]);
+      }
+      break;
+  }
+
+  let metodoTxt = `${res.metodo}, error estimado ≈ ${formatoError(res.error)}.`;
+  if (res.removibles.length) metodoTxt += ` El integrando no está definido en x = ${listaNumeros(res.removibles)}, pero su límite sí existe: se usó el límite (singularidad removible).`;
+  if (res.impropia) metodoTxt += ' El integrando no está acotado en un extremo: es una integral impropia convergente y se usó la cuadratura tanh-sinh.';
+  pasos.push(['Método numérico:', metodoTxt]);
+  mostrarPasos(pasos);
 }
 
 function renderCalculo(gesto) {
@@ -658,7 +827,7 @@ function renderCalculo(gesto) {
   if (!Number.isFinite(a) || !Number.isFinite(b)) return mostrarError('Los límites a y b deben ser números.');
   if (a >= b) return mostrarError('El límite a debe ser menor que el límite b.');
 
-  const f = compilarFuncion(fStr);
+  const f = Calculo.compilarFuncion(fStr);
   if (!f) {
     return mostrarError(`No se pudo interpretar "${fStr}". Usa x como variable. Ejemplos válidos: x^2, -x^2 + 4, 2x + 1, sin(x), exp(-x), sqrt(4 - x).`);
   }
@@ -666,85 +835,57 @@ function renderCalculo(gesto) {
   const info = INFO[gesto];
   if (!info) return false;
 
-  let res, trazas, layout, nota = '';
   const metodo = $('metodo-select').value;
-  const df = (gesto === 4 || gesto === 5) ? compilarDerivada(fStr, f) : null;
-  let integrando, cortes = [];
-
+  const der = (gesto === 4 || gesto === 5) ? Calculo.compilarDerivada(fStr, f, a, b) : null;
+  let res;
   switch (gesto) {
-    case 1: {
-      integrando = (x) => Math.abs(f(x));
-      cortes = raicesEn(f, a, b);
-      res = integrar(integrando, a, b, metodo, cortes);
-      const neta = integrar(f, a, b, metodo).valor;
-      if (Number.isFinite(neta) && Math.abs(neta - res.valor) > 1e-6) {
-        nota += ` La función cambia de signo: área neta (con signo) = ${neta.toFixed(4)} u².`;
-      }
-      const xs = linspace(a - 0.5, b + 0.5, 300);
-      const xf = linspace(a, b, 200);
-      trazas = [
-        { x: xf, y: xf.map(f), type: 'scatter', mode: 'lines', fill: 'tozeroy',
-          fillcolor: 'rgba(0,173,181,0.35)', line: { color: 'rgba(0,0,0,0)' }, hoverinfo: 'skip' },
-        { x: xs, y: xs.map(f), type: 'scatter', mode: 'lines', line: { color: '#00adb5', width: 3 } }
-      ];
-      layout = layout2D();
-      break;
-    }
-    case 2: {
-      integrando = (x) => Math.PI * f(x) ** 2;
-      res = integrar(integrando, a, b, metodo);
-      trazas = [superficie(mallaRevolucionX(f, a, b), 'Viridis')];
-      layout = layout3D();
-      break;
-    }
-    case 3: {
-      integrando = (x) => 2 * Math.PI * Math.abs(x) * Math.abs(f(x));
-      cortes = raicesEn(f, a, b);
-      res = integrar(integrando, a, b, metodo, cortes);
-      if (a < 0 && b > 0) {
-        nota += ' ⚠️ El intervalo cruza x = 0: las capas de ambos lados se superponen. Usa a ≥ 0 para un sólido real.';
-      }
-      trazas = [superficie(mallaRevolucionY(f, a, b), 'YlOrRd')];
-      layout = layout3D('y', 'f(x)');
-      break;
-    }
-    case 4: {
-      integrando = (x) => 2 * Math.PI * Math.abs(f(x)) * Math.sqrt(1 + df(x) ** 2);
-      cortes = raicesEn(f, a, b);
-      res = integrar(integrando, a, b, metodo, cortes);
-      trazas = [superficie(mallaRevolucionX(f, a, b), 'YlOrRd')];
-      layout = layout3D();
-      break;
-    }
-    case 5: {
-      integrando = (x) => Math.sqrt(1 + df(x) ** 2);
-      res = integrar(integrando, a, b, metodo);
-      const xs = linspace(a - 0.5, b + 0.5, 300);
-      const xArc = linspace(a, b, 200);
-      trazas = [
-        { x: xs, y: xs.map(f), type: 'scatter', mode: 'lines', line: { color: '#00adb5', width: 2 } },
-        { x: xArc, y: xArc.map(f), type: 'scatter', mode: 'lines', line: { color: '#ff0055', width: 4 } }
-      ];
-      layout = layout2D();
-      break;
-    }
+    case 1: res = Calculo.calcularArea(f, a, b, metodo); break;
+    case 2: res = Calculo.calcularVolumenX(f, a, b, metodo); break;
+    case 3: res = Calculo.calcularVolumenY(f, a, b, metodo); break;
+    case 4: res = Calculo.calcularSuperficie(f, der.df, a, b, metodo); break;
+    case 5: res = Calculo.calcularLongitudArco(f, der.df, a, b, metodo); break;
   }
 
-  if (!Number.isFinite(res.valor)) {
+  // Verificación con el método adaptativo: con otro método, una asíntota dentro del intervalo podría
+  // pasar desapercibida y dar un número enorme sin sentido
+  const [lo, hi] = res.dominio;
+  const ref = metodo === 'adaptativo' ? res : Calculo.integrar(res.integrando, lo, hi, 'adaptativo', res.cortes);
+  if (res.diverge || ref.diverge) {
+    return mostrarError('La integral diverge (vale ∞): la función tiene una asíntota vertical en [a, b] que no encierra un área finita. Ajusta los límites para evitarla.');
+  }
+  if (!Number.isFinite(res.valor) || !Number.isFinite(ref.valor)) {
     return mostrarError('La función no está definida (o no es derivable) en todo el intervalo [a, b]. Revisa la función o ajusta los límites.');
   }
-  if (res.impropia) {
-    nota += ' ℹ️ Integral impropia en un extremo: valor aproximado con cuadratura de Gauss.';
-  }
-  nota += ` Método: ${res.metodo}, error estimado ≈ ${formatoError(res.error)}.`;
 
-  Plotly.react('plot-holder', trazas, layout, PLOT_CONFIG);
+  let vis;
+  switch (gesto) {
+    case 1: vis = graficaArea(f, a, b, res); break;
+    case 2: vis = graficaVolumenX(f, a, b); break;
+    case 3: vis = graficaVolumenY(f, a, b, res); break;
+    case 4: vis = graficaSuperficie(f, a, b); break;
+    case 5: vis = graficaArco(f, a, b, res); break;
+  }
+  Plotly.react('plot-holder', vis.trazas, vis.layout, PLOT_CONFIG);
   const holder = $('plot-holder');
   if (holder.removeAllListeners) holder.removeAllListeners('plotly_relayout');
   if (holder.on) holder.on('plotly_relayout', sincronizarCamara);
 
-  renderAnalisis(integrando, a, b, cortes, metodo);
-  construirExplicacion(gesto, metodo, res, cortes);
+  renderAnalisis(res.integrando, lo, hi, res.cortes, metodo, ref.valor);
+  construirExplicacion(gesto, metodo, res);
+
+  // Notas del resultado
+  let nota = '';
+  if (gesto === 1 && res.negativa < 0 && res.positiva > 0) {
+    nota += ` La función cambia de signo: la integral con signo vale ${fmt(res.integral)} y el área geométrica ${fmt(res.area)}.`;
+  } else if (gesto === 1 && res.positiva === 0) {
+    nota += ` f ≤ 0 en [a, b]: la integral con signo es ${fmt(res.integral)} y el área es su valor absoluto.`;
+  }
+  if (gesto === 3 && res.cruzaEje) {
+    nota += ` ⚠️ El intervalo cruza el eje de giro (x = 0): las capas de ambos lados ocupan el mismo espacio, así que se tomó su unión (sumarlas daría ${fmt(res.sinCorregir)}).`;
+  }
+  if (res.removibles.length) nota += ` ℹ️ Singularidad removible en x = ${listaNumeros(res.removibles)}: se usó el límite.`;
+  if (res.impropia) nota += ' ℹ️ Integral impropia convergente: se aproximó con cuadratura tanh-sinh.';
+  nota += ` Método: ${res.metodo}, error estimado ≈ ${formatoError(res.error)}.`;
 
   const caso = CONTEXTOS[$('preset-select').value];
   const esp = caso && caso.gestos[gesto];
@@ -759,13 +900,49 @@ function renderCalculo(gesto) {
 
   const r = $('result-val');
   r.classList.remove('error');
-  r.textContent = `${titulo}: ${res.valor.toFixed(decimales)} ${unidad}`;
+  r.textContent = `${titulo}: ${fmt(res.valor, decimales)} ${unidad}`;
   $('result-desc').textContent = `Fórmula: ${info.formula} — ${uso}${nota}`;
 
+  const v = (x) => `${fmt(x, decimales)} ${unidad}`;
+  const datos = [];
+  switch (gesto) {
+    case 1:
+      datos.push(['∫ f(x) dx (con signo)', v(res.integral), res.integral < 0 ? 'neg' : '']);
+      datos.push(['Área geométrica ∫|f|', v(res.area), 'principal']);
+      if (res.positiva > 0 && res.negativa < 0) {
+        datos.push(['Parte sobre el eje', v(res.positiva)]);
+        datos.push(['Parte bajo el eje', v(res.negativa), 'neg']);
+      }
+      break;
+    case 2:
+      datos.push(['Volumen (discos)', v(res.valor), 'principal']);
+      break;
+    case 3:
+      datos.push(['Volumen (capas)', v(res.valor), 'principal']);
+      if (res.cruzaEje) datos.push(['Sumando ambos lados (doble conteo)', v(res.sinCorregir), 'tachado']);
+      break;
+    case 4:
+      datos.push(['Superficie lateral', v(res.valor), 'principal']);
+      datos.push(['Tapas π·f(a)² + π·f(b)²', v(res.tapas)]);
+      datos.push(['Total con tapas', v(res.valor + res.tapas)]);
+      break;
+    case 5:
+      datos.push(['Longitud del arco', v(res.valor), 'principal']);
+      if (Number.isFinite(res.cuerda)) {
+        datos.push(['Cuerda (recta AB)', v(res.cuerda)]);
+        datos.push(['Exceso sobre la recta', v(res.valor - res.cuerda)]);
+      }
+      break;
+  }
+  datos.push(['Error estimado', formatoError(res.error)]);
+  mostrarDetalle(datos);
+  construirPasos(gesto, { fStr, a, b, res, der, unidad, decimales });
+
   gestoActual = gesto;
+  marcarBotonGesto(gesto);
   if (modoActual === 'exploracion' && gesto !== prevGestoHablado) {
     prevGestoHablado = gesto;
-    hablar(`${titulo}. ${res.valor.toFixed(Math.min(decimales, 2))} ${voz}. ${textoExplicacion}`);
+    hablar(`${titulo}. ${fmt(res.valor, Math.min(decimales, 2))} ${voz}. ${textoExplicacion}`);
   }
   return true;
 }
@@ -803,20 +980,24 @@ function actualizarMarcador() {
 function reiniciarDeteccion() {
   bufferDedos = [];
   gestoCandidato = null;
+  dedosPrevios = null;
   actualizarBarra(0);
 }
 
 function limpiarProyeccion(motivo) {
   if (typeof Plotly !== 'undefined') Plotly.purge('plot-holder');
   $('analisis-card').hidden = true;
+  $('pasos-card').hidden = true;
+  $('result-detalle').replaceChildren();
   gestoActual = null;
   prevGestoHablado = -1;
+  marcarBotonGesto(null);
   const r = $('result-val');
   r.classList.remove('error');
   r.textContent = '✨ Pantalla limpia';
   $('result-desc').textContent = motivo === 'inactividad'
-    ? 'Se limpió por inactividad. Muestra de 1 a 5 dedos para proyectar un cálculo.'
-    : 'Muestra de 1 a 5 dedos para proyectar un nuevo cálculo.';
+    ? 'Se limpió por inactividad. Muestra de 1 a 5 dedos (o usa los botones) para proyectar un cálculo.'
+    : 'Muestra de 1 a 5 dedos (o usa los botones) para proyectar un nuevo cálculo.';
   hablar(motivo === 'inactividad' ? 'Pantalla limpia por inactividad' : 'Pantalla limpia');
 }
 
@@ -837,7 +1018,8 @@ function nuevaPreguntaArcade() {
   $('mode-title').textContent = `⚡ RETO ARCADE: ${preguntaActual.reto}`;
   $('result-val').classList.remove('error');
   $('result-val').textContent = 'Esperando tu gesto...';
-  $('result-desc').textContent = 'Muestra el número de dedos correcto y mantenlo 1 segundo (o responde con el control manual).';
+  $('result-desc').textContent = 'Muestra el número de dedos correcto y mantenlo 1 segundo (o responde con los botones de gesto o las teclas 1 a 5).';
+  $('result-detalle').replaceChildren();
   hablar(preguntaActual.reto);
 }
 
@@ -919,13 +1101,16 @@ function cambiarModo(modo) {
 // ==========================================
 $('btn-mode-explore').addEventListener('click', () => cambiarModo('exploracion'));
 $('btn-mode-arcade').addEventListener('click', () => cambiarModo('arcade'));
+$('btn-ir-lab').addEventListener('click', () => {
+  $('laboratorio').scrollIntoView({ behavior: reducirMovimiento ? 'auto' : 'smooth', block: 'start' });
+});
 
 $('btn-recalc').addEventListener('click', () => {
   const man = $('manual-gesto').value;
   if (modoActual === 'arcade') {
     if (juegoPausado) { reanudarArcade(); return; }
     if (man === 'cam' || man === '0') {
-      $('gesture-text').textContent = 'Elige de 1 a 5 dedos en "Control manual" para responder sin cámara.';
+      $('gesture-text').textContent = 'Elige de 1 a 5 dedos en "Control manual" (o usa los botones de gesto) para responder sin cámara.';
       return;
     }
     verificarRespuestaArcade(parseInt(man, 10));
@@ -933,6 +1118,42 @@ $('btn-recalc').addEventListener('click', () => {
   }
   if (man === '0') { limpiarProyeccion('manual'); return; }
   renderCalculo(man === 'cam' ? (gestoActual || 1) : parseInt(man, 10));
+});
+
+// Botones de gesto: funcionan siempre, haya o no cámara (también con las teclas 1–5 y 0)
+function elegirGestoBoton(g) {
+  ultimaActividad = performance.now();
+  if (modoActual === 'arcade') {
+    if (juegoPausado) { reanudarArcade(); return; }
+    if (g === 0) {
+      $('gesture-text').textContent = 'En Arcade no se limpia la pantalla: responde de 1 a 5.';
+      return;
+    }
+    $('gesture-text').textContent = `Respuesta por botón: ${g}`;
+    verificarRespuestaArcade(g);
+    return;
+  }
+  if (g === 0) {
+    $('gesture-text').textContent = 'Botón: limpiar pantalla';
+    limpiarProyeccion('manual');
+    return;
+  }
+  $('gesture-text').textContent = `Botón: ${g} — ${INFO[g].titulo}`;
+  renderCalculo(g);
+}
+
+document.querySelectorAll('.gesto-btn').forEach((btn) => {
+  btn.addEventListener('click', () => elegirGestoBoton(Number(btn.dataset.gesto)));
+});
+
+window.addEventListener('keydown', (e) => {
+  if (e.ctrlKey || e.metaKey || e.altKey || e.repeat) return;
+  const t = e.target;
+  if (t && (t.tagName === 'INPUT' || t.tagName === 'SELECT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+  if (/^[0-5]$/.test(e.key)) {
+    e.preventDefault();
+    elegirGestoBoton(Number(e.key));
+  }
 });
 
 ['input-func', 'input-a', 'input-b'].forEach((id) => {
@@ -1009,6 +1230,12 @@ outCanvas.width = CW * dprCam;
 outCanvas.height = CH * dprCam;
 outCtx.setTransform(dprCam, 0, 0, dprCam, 0, 0);
 
+// Versión fija de MediaPipe Hands: el script y sus archivos (modelo, wasm) deben ser de la misma versión
+const VERSION_HANDS = '0.4.1675469240';
+// Resolución de captura: con 280×210 la mano quedaba muy chica para el modelo y los puntos temblaban.
+// El visor sigue dibujándose a 280×210.
+const CAPTURA_W = 640, CAPTURA_H = 480;
+
 let camaraLista = false;
 let camaraDisponible = true;
 let manoActual = null;              // mano de funciones (derecha)
@@ -1033,7 +1260,8 @@ function setBadge(estado, texto) {
   b.textContent = texto;
 }
 
-function dibujarEsqueleto(lm, color = '#00adb5') {
+// Dibuja la mano; las puntas de los dedos que cuentan como extendidos se ven doradas
+function dibujarEsqueleto(lm, color = '#00adb5', extendidos = null) {
   outCtx.strokeStyle = color;
   outCtx.lineWidth = 2;
   for (const [i, j] of HAND_CONNECTIONS) {
@@ -1043,10 +1271,12 @@ function dibujarEsqueleto(lm, color = '#00adb5') {
     outCtx.stroke();
   }
   lm.forEach((p, i) => {
-    const esPunta = PUNTAS.includes(i);
+    const dedo = PUNTAS.indexOf(i);
+    const esPunta = dedo >= 0;
+    const activa = esPunta && (!extendidos || extendidos[dedo]);
     outCtx.beginPath();
     outCtx.arc((1 - p.x) * CW, p.y * CH, esPunta ? 5 : 3, 0, Math.PI * 2);
-    outCtx.fillStyle = esPunta ? '#ffb703' : color;
+    outCtx.fillStyle = activa ? '#ffb703' : (esPunta ? '#555a6b' : color);
     outCtx.fill();
   });
 }
@@ -1060,7 +1290,7 @@ function loopCamara(t) {
   outCtx.fillStyle = '#121318';
   outCtx.fillRect(0, 0, CW, CH);
   orbeCamara.dibujar(outCtx, reducirMovimiento ? 0 : t, manoActual || manoRotar ? 0.3 : 1);
-  if (manoActual) dibujarEsqueleto(manoActual);
+  if (manoActual) dibujarEsqueleto(manoActual, '#00adb5', dedosPrevios);
   if (manoRotar) dibujarEsqueleto(manoRotar, '#ff0055');
   if (mensajeCamara) {
     outCtx.fillStyle = 'rgba(13, 14, 18, 0.7)';
@@ -1072,31 +1302,6 @@ function loopCamara(t) {
   }
 }
 requestAnimationFrame(loopCamara);
-
-function calcularModa(arr) {
-  const conteo = {};
-  let maxCount = 0;
-  let moda = arr[0];
-  for (const num of arr) {
-    conteo[num] = (conteo[num] || 0) + 1;
-    if (conteo[num] > maxCount) {
-      maxCount = conteo[num];
-      moda = num;
-    }
-  }
-  return moda;
-}
-
-const distancia = (p, q) => Math.hypot(p.x - q.x, p.y - q.y);
-
-function countFingers(lm) {
-  let count = 0;
-  for (const tip of [8, 12, 16, 20]) {
-    if (distancia(lm[tip], lm[0]) > distancia(lm[tip - 2], lm[0])) count++;
-  }
-  if (distancia(lm[4], lm[17]) > distancia(lm[3], lm[17])) count++;
-  return count;
-}
 
 function revisarInactividad(ahora) {
   const inactivo = ahora - ultimaActividad;
@@ -1120,19 +1325,6 @@ function revisarInactividad(ahora) {
 // "Left" corresponde a la mano DERECHA real del usuario. Si en tu equipo salen al revés, cambia este valor.
 const ETIQUETA_FUNCIONES = 'Left';
 
-// Derecha = funciones (dedos), izquierda = rotar la gráfica
-function asignarManos(results) {
-  const lados = results.multiHandedness || [];
-  let funciones = null, rotar = null;
-  results.multiHandLandmarks.forEach((lm, i) => {
-    const etiqueta = lados[i] && lados[i].label;
-    if (etiqueta === ETIQUETA_FUNCIONES && !funciones) funciones = lm;
-    else if (!rotar) rotar = lm;
-    else if (!funciones) funciones = lm;
-  });
-  return { funciones, rotar };
-}
-
 let _rotPrev = null;
 let _ultimoRelayout = 0;
 const SENS_AZIMUT = 5;
@@ -1154,6 +1346,11 @@ function rotarGrafica(lm, ahora) {
   Plotly.relayout('plot-holder', { 'scene.camera.eye': ojoCamara() });
 }
 
+function aspectoVideo() {
+  const w = videoElement.videoWidth, h = videoElement.videoHeight;
+  return w && h ? w / h : CAPTURA_W / CAPTURA_H;
+}
+
 function procesarResultados(results) {
   if ($('manual-gesto').value !== 'cam') {
     manoActual = null;
@@ -1165,13 +1362,15 @@ function procesarResultados(results) {
   if (!results.multiHandLandmarks || results.multiHandLandmarks.length === 0) {
     manoActual = null;
     manoRotar = null;
+    memoriaManos.voto = 0;
     rotarGrafica(null, ahora);
     reiniciarDeteccion();
     revisarInactividad(ahora);
     return;
   }
 
-  ({ funciones: manoActual, rotar: manoRotar } = asignarManos(results));
+  ({ funciones: manoActual, rotar: manoRotar } =
+    Gestos.asignarManos(results.multiHandLandmarks, results.multiHandedness, ETIQUETA_FUNCIONES, memoriaManos));
   ultimaActividad = ahora;
   if (juegoPausado) reanudarArcade();
 
@@ -1184,9 +1383,11 @@ function procesarResultados(results) {
     return;
   }
 
-  bufferDedos.push(countFingers(manoActual));
+  const conteo = Gestos.contarDedos(manoActual, dedosPrevios, aspectoVideo());
+  dedosPrevios = conteo.extendidos;
+  bufferDedos.push(conteo.cuenta);
   if (bufferDedos.length > TAM_BUFFER) bufferDedos.shift();
-  const gesto = calcularModa(bufferDedos);
+  const gesto = Gestos.calcularModa(bufferDedos);
   const esPuno = gesto === 0;
   const texto = $('gesture-text');
 
@@ -1249,57 +1450,101 @@ function activarRespaldo(textoBadge, mensaje) {
   sel.querySelector('option[value="cam"]').disabled = true;
   if (sel.value === 'cam') sel.value = String(gestoActual || 1);
   $('gesture-text').textContent = mensaje;
-  mensajeCamara = '📷 Cámara no disponible';
+  mensajeCamara = '📷 Usa los botones de gesto';
+  document.querySelector('.gesto-panel').classList.add('destacado');
 }
 
-function iniciarCamara() {
-  if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
-    activarRespaldo('🔴 Sin sensor', 'No se cargó MediaPipe (¿sin internet?). Usa el control manual.');
+// La cámara se pide directamente con getUserMedia. Antes se usaba Camera de @mediapipe/camera_utils,
+// que ante un permiso denegado (o sin webcam) lanzaba un alert() en inglés que bloqueaba la página
+// antes de llegar a los botones de respaldo.
+async function iniciarCamara() {
+  if (typeof Hands === 'undefined') {
+    activarRespaldo('🔴 Sin sensor', 'No se cargó MediaPipe (¿sin internet?). Usa los botones de gesto o las teclas 1 a 5.');
     return;
   }
-  if (!window.isSecureContext || !navigator.mediaDevices) {
-    activarRespaldo('🔴 Sin cámara', 'Abre el proyecto desde localhost o https para usar la cámara. Mientras tanto, usa el control manual.');
+  if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    activarRespaldo('🔴 Sin cámara', 'Abre el proyecto desde localhost o https para usar la cámara. Mientras tanto, usa los botones de gesto o las teclas 1 a 5.');
     return;
   }
 
   setBadge('warn', '🟡 Iniciando sensor…');
 
+  let stream;
   try {
-    const hands = new Hands({
-      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+    stream = await navigator.mediaDevices.getUserMedia({
+      video: { width: { ideal: CAPTURA_W }, height: { ideal: CAPTURA_H }, facingMode: 'user' },
+      audio: false
     });
-    hands.setOptions({
-      maxNumHands: 2,
-      modelComplexity: 0,
-      minDetectionConfidence: 0.7,
-      minTrackingConfidence: 0.5
-    });
-    hands.onResults((results) => {
-      if (!camaraLista) {
-        camaraLista = true;
-        mensajeCamara = '';
-        ultimaActividad = performance.now();
-        setBadge('ok', '🟢 Sensor activo');
-      }
-      procesarResultados(results);
-    });
+    videoElement.srcObject = stream;
+    await videoElement.play();
+  } catch (err) {
+    console.warn('Cámara no disponible:', err && err.name);
+    const motivo = err && err.name === 'NotAllowedError' ? 'permiso denegado' : 'no se encontró una cámara';
+    activarRespaldo('🔴 Cámara no disponible', `No se pudo usar la cámara (${motivo}). Usa los botones de gesto o las teclas 1 a 5.`);
+    return;
+  }
+  const pista = stream.getVideoTracks()[0];
+  if (pista) {
+    pista.addEventListener('ended', () => activarRespaldo('🔴 Cámara desconectada', 'Se desconectó la cámara. Usa los botones de gesto o las teclas 1 a 5.'));
+  }
 
-    const camera = new Camera(videoElement, {
-      onFrame: async () => {
-        if ($('manual-gesto').value === 'cam') await hands.send({ image: videoElement });
-      },
-      width: CW,
-      height: CH
-    });
-
-    Promise.resolve(camera.start()).catch((err) => {
-      console.error('Error de cámara:', err);
-      activarRespaldo('🔴 Cámara no disponible', 'No se pudo acceder a la cámara (permiso denegado o sin dispositivo). Usa el control manual.');
+  let hands;
+  try {
+    hands = new Hands({
+      locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands@${VERSION_HANDS}/${file}`
     });
   } catch (err) {
     console.error('Error al iniciar MediaPipe:', err);
-    activarRespaldo('🔴 Sin sensor', 'No se pudo iniciar la detección de manos. Usa el control manual.');
+    activarRespaldo('🔴 Sin sensor', 'No se pudo iniciar la detección de manos. Usa los botones de gesto o las teclas 1 a 5.');
+    return;
   }
+  // Modelo completo (más preciso que el "lite"); si el equipo no da abasto se baja al lite
+  let complejidad = 1;
+  hands.setOptions({
+    maxNumHands: 2,
+    modelComplexity: complejidad,
+    minDetectionConfidence: 0.7,
+    minTrackingConfidence: 0.6
+  });
+  hands.onResults((results) => {
+    if (!camaraDisponible) return;   // llegó un cuadro que estaba en proceso cuando se cortó la cámara
+    if (!camaraLista) {
+      camaraLista = true;
+      mensajeCamara = '';
+      ultimaActividad = performance.now();
+      setBadge('ok', '🟢 Sensor activo');
+    }
+    procesarResultados(results);
+  });
+
+  // Un cuadro por vez: no se envía el siguiente hasta que MediaPipe termine con el anterior
+  const tiempos = [];
+  const procesarCuadro = async () => {
+    if (!camaraDisponible) return;
+    if ($('manual-gesto').value === 'cam' && videoElement.readyState >= 2) {
+      const t0 = performance.now();
+      try {
+        await hands.send({ image: videoElement });
+      } catch (err) {
+        console.error('Error en la detección de manos:', err);
+        stream.getTracks().forEach((t) => t.stop());   // libera la cámara
+        activarRespaldo('🔴 Sin sensor', 'Falló la detección de manos (¿se cortó internet al cargar el modelo?). Usa los botones de gesto o las teclas 1 a 5.');
+        return;
+      }
+      tiempos.push(performance.now() - t0);
+      if (tiempos.length === 30) {
+        const promedio = tiempos.reduce((s, v) => s + v, 0) / tiempos.length;
+        tiempos.length = 0;
+        if (complejidad === 1 && promedio > 70) {
+          complejidad = 0;
+          hands.setOptions({ modelComplexity: 0 });
+          console.info(`Detección lenta (${promedio.toFixed(0)} ms por cuadro): se usa el modelo lite.`);
+        }
+      }
+    }
+    requestAnimationFrame(procesarCuadro);
+  };
+  requestAnimationFrame(procesarCuadro);
 }
 
 // ==========================================
@@ -1312,7 +1557,7 @@ function errorHablado(e) {
 }
 
 const DESC_METODO = {
-  adaptativo: 'reemplaza la curva por pequeñas parábolas y subdivide más solo donde la curva cambia rápido, hasta alcanzar una tolerancia de una milmillonésima',
+  adaptativo: 'reemplaza la curva por pequeñas parábolas y subdivide más solo donde la curva cambia rápido, hasta alcanzar una tolerancia relativa de una diezmilmillonésima',
   simpson: 'reemplaza la curva por pequeñas parábolas en cuatrocientos subintervalos iguales; su error baja con la cuarta potencia del paso',
   romberg: 'aplica la regla del trapecio con cada vez más subintervalos y luego extrapola con el método de Richardson para eliminar el error',
   gauss: 'evalúa la función en puntos elegidos de forma óptima y los pondera; es muy preciso con pocos puntos',
@@ -1320,20 +1565,22 @@ const DESC_METODO = {
 };
 
 const DESC_GESTO = {
-  1: 'el área bajo la curva, la integral del valor absoluto de f',
+  1: 'la integral definida con signo, donde las partes bajo el eje restan, y el área geométrica, que es la integral del valor absoluto de f',
   2: 'el volumen por discos, pi por la integral de f al cuadrado',
-  3: 'el volumen por capas cilíndricas, dos pi por la integral de x por f',
+  3: 'el volumen por capas cilíndricas, dos pi por la integral del radio por la altura de cada capa',
   4: 'el área superficial, dos pi por la integral de f por la raíz de uno más la derivada al cuadrado',
   5: 'la longitud de arco, la integral de la raíz de uno más la derivada al cuadrado'
 };
 
 let textoExplicacion = '';
 
-function construirExplicacion(gesto, clave, res, cortes) {
+function construirExplicacion(gesto, clave, res) {
   let t = `Se calcula ${DESC_GESTO[gesto]}. La aplicación no busca la antiderivada: aproxima la integral con el método ${res.metodo.replace(/\(.*\)/, '').trim()}, que ${DESC_METODO[clave]}. `;
-  if (cortes.length) t += `Como f cambia de signo, el intervalo se partió en ${cortes.length + 1} tramos en sus raíces. `;
+  if (gesto === 1 && res.raices.length) t += `Como f cambia de signo, el intervalo se partió en ${res.raices.length + 1} tramos en sus raíces. `;
+  if (gesto === 3 && res.cruzaEje) t += 'Como el intervalo cruza el eje de giro, se toma la unión de las capas de ambos lados para no contar dos veces el mismo volumen. ';
   if (gesto === 4 || gesto === 5) t += 'La derivada de f se obtiene de forma exacta con math punto js. ';
-  if (res.impropia) t += 'Es una integral impropia, así que se usó cuadratura de Gauss. ';
+  if (res.removibles.length) t += 'En algún punto el integrando no está definido pero su límite sí, así que se usa el límite. ';
+  if (res.impropia) t += 'Es una integral impropia convergente, así que se usó la cuadratura tanh-sinh, que no evalúa los extremos. ';
   t += `El error estimado es ${errorHablado(res.error)}, y se calcula comparando con el doble de subintervalos. `;
   t += 'Cuando una integral no tiene solución exacta, como e a la menos x al cuadrado, estos métodos numéricos son justamente la forma de aproximarla.';
   textoExplicacion = t;

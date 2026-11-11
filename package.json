@@ -1,0 +1,13 @@
+{
+  "name": "calculo-integral-en-movimiento",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Dashboard cyberpunk para visualizar y calcular integrales con gestos de la mano, gráficas 2D/3D y un laboratorio de sumas de Riemann.",
+  "scripts": {
+    "test": "node --test",
+    "start": "python -m http.server 8000"
+  },
+  "devDependencies": {
+    "mathjs": "12.4.0"
+  }
+}
